@@ -1,0 +1,7 @@
+name: ""
+output_dir: "docs"
+navbar:
+  title: ""
+  left:
+    - text: "Home"
+      href: index.html
