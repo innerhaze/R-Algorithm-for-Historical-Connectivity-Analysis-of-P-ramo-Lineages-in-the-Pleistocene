@@ -11,8 +11,7 @@ output:
     css: styles.css
 ---
 
-# 
-Cálculo de conectividad histórica
+# **Cálculo de conectividad histórica**
 
 El siguiente algoritmo fue diseñado para calcular la conectividad histórica entre pares de linajes, con el objetivo de analizar la relación entre esta conectividad y las distancias evolutivas entre ellos. Para lograrlo, se utilizan los tiempos correspondientes al intervalo entre nodos padre e hijo para todos los pares posibles en un árbol ultramétrico (véase Figura 1, ejemplo: tiempo entre los nodos 8 y 9). Estos tiempos representan, hipotéticamente, los eventos que llevaron a la divergencia entre linajes, en contextos como las fluctuaciones climáticas del Pleistoceno, las cuales influyeron en los períodos de mayor o menor conectividad, resultando en la divergencia.
 
