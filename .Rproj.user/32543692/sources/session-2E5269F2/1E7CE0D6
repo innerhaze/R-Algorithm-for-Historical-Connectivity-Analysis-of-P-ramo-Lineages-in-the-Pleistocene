@@ -3,7 +3,7 @@
     "path": "~/GitHub/Conectividad_historica/R-algorithm-for-Historical-Connectivity-Analysis-for-P-ramo-Lineages-using-a-Pleistocene-polen-model/index.Rmd",
     "project_path": "index.Rmd",
     "type": "r_markdown",
-    "hash": "1407273582",
+    "hash": "733816458",
     "contents": "",
     "dirty": false,
     "created": 1724130336893.0,
@@ -12,20 +12,20 @@
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "62,145",
+        "cursorPosition": "14,0",
         "scrollLine": "55",
         "rmdVisualMode": "true",
         "rmdVisualWrapConfigured": "true",
         "docOutlineVisible": "1",
         "rmdVisualCollapsedChunks": "",
-        "rmdVisualModeLocation": "6571:2025"
+        "rmdVisualModeLocation": "313:99"
     },
     "folds": "",
-    "lastKnownWriteTime": 1724130682,
+    "lastKnownWriteTime": 1724131779,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1724130682200,
+    "last_content_update": 1724131779265,
     "read_only": false,
     "read_only_alternatives": []
 }
