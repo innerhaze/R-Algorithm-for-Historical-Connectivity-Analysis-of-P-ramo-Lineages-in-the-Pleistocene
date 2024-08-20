@@ -1,5 +1,5 @@
 ---
-title: "Historical Connectivity Analysis for Lineages using Pleistocene Páramo Configurations"
+title: "Algoritmo de R para el Análisis de Conectividad Histórica de Linajes de Páramo en el Pleistoceno"
 author: "Sebastián Sánchez Cuartas"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output: 
