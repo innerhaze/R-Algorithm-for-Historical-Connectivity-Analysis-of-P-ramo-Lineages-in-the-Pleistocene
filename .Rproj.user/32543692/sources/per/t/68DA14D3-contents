@@ -1,0 +1,2351 @@
+
+############################################################################################################
+############################################################################################################
+
+
+############################################################################################################
+################################################################################
+################### Cargar la carpeta que contiene los shapes ##################
+################################################################################
+
+library(sf)
+
+# Ruta de la carpeta que contiene los shapefiles
+carpeta <- "C:/Users/Usuario/Desktop/wetransfer_archivos-de-flickering-connectivity-system-paramos_2023-12-21_1602/01_PARAMOS"
+
+# Obtener la lista de archivos .shp en la carpeta
+file_list <- list.files(path = carpeta, pattern = "\\.shp$", full.names = TRUE)
+
+# Crear una lista para almacenar los shapes
+shapes_lista <- list()
+
+# Leer cada archivo .shp y asignar un número único a cada shape
+for (i in seq_along(file_list)) {
+  # Cargar el archivo .shp
+  shapefile <- st_read(file_list[i])
+  
+  # Transformar el sistema de coordenadas a WGS84 si no está en ese formato
+  if (st_crs(shapefile)$proj4string != "+proj=longlat +datum=WGS84 +no_defs") {
+    shapefile <- st_transform(shapefile, crs = 4326)  # WGS84 CRS
+  }
+  
+  # Asignar un número único a cada shape
+  shapefile$num_shape <- i
+  
+  # Agregar el shape a la lista
+  shapes_lista[[i]] <- shapefile
+}
+
+################################################################################
+############## Crear la lista con los rangos de elevación  #####################
+################################################################################
+
+rangos_elevacion <- list(
+  c(2000, 2700),
+  c(2100, 2800),
+  c(2200, 2900),
+  c(2300, 3000),
+  c(2400, 3100),
+  c(2500, 3200),
+  c(2600, 3300),
+  c(2700, 3400),
+  c(2800, 3500),
+  c(2900, 3600),
+  c(3000, 3700),
+  c(3100, 3800),
+  c(3200, 3900),
+  c(3300, 4000),
+  c(3400, 4100),
+  c(3500, 4200),
+  c(3600, 4300),
+  c(3700, 4400),
+  c(3800, 4500),
+  c(3900, 4600),
+  c(4000, 4700),
+  c(4100, 4800)
+)
+
+# Ver la lista actualizada
+print(rangos_elevacion)
+
+
+################################################################################
+##### Reclasificar el raster de elevación (prueba primer rango solamente) ######
+################################################################################
+
+library(raster)
+
+raster_elevacion <- raster("C:/Users/Usuario/Documents/Spearman/COL_alt.asc")
+
+# Cargar el raster de elevación
+raster_elevacion <- raster("C:/Users/Usuario/Desktop/Archivos_tesis/Prueba.tif")
+
+# Crear una lista para almacenar el raster reclasificado
+rasters_reclasificados <- list()
+
+# Obtener las coordenadas de todos los píxeles del raster de elevación
+# El siguiente bloque de código utiliza la función `xyFromCell` del paquete `raster` para extraer las coordenadas espaciales (x, y) de cada celda en un raster de elevación. Estas coordenadas se almacenan en una matriz llamada `coordenadas_raster`, donde cada fila representa una celda del raster, y las columnas contienen las coordenadas geográficas correspondientes.
+
+coordenadas_raster <- raster::xyFromCell(raster_elevacion, 1:ncell(raster_elevacion))
+
+# Tomar el primer rango de elevación de la lista
+primer_rango_elevacion <- rangos_elevacion[[1]]
+
+# Definir los límites de reclasificación
+limite_inferior <- primer_rango_elevacion[1]
+limite_superior <- primer_rango_elevacion[2]
+
+#Definir el ancho de la zona de transición
+ancho_transicion <- 100  # Ancho de la zona de transición gradual (en metros)
+
+#ancho_transicion_penalizacion_subparamo <- 300
+#ancho_transicion_penalizacion_superparamo <- 200 
+
+# Extraer los valores de elevación en las coordenadas de los puntos
+valores_elevacion <- raster::extract(raster_elevacion, coordenadas_raster)
+
+# Si hay al menos un valor de elevación no NA, procedemos con la reclasificación
+if (any(!is.na(valores_elevacion))) {
+  # Crear un raster con las mismas dimensiones y extensión que el raster de elevación
+  raster_reclasificado <- raster::raster(raster_elevacion)
+  
+  # Asignar valor 1 para el rango definido por los polígonos
+  raster_reclasificado[raster_elevacion >= limite_inferior & 
+                         raster_elevacion <= limite_superior] <- 1
+  
+  # Asignar valores de penalización gradual por encima del rango
+  penalizacion <- 2
+  # Limitar el proceso de actualización del limite_superior a 200 metros por encima del rango inicial
+  while ((limite_superior + ancho_transicion) <= (primer_rango_elevacion[2] + 200)) {
+    raster_reclasificado[raster_elevacion > limite_superior & 
+                           raster_elevacion <= (limite_superior + ancho_transicion)] <- penalizacion
+    penalizacion <- penalizacion + 2
+    limite_superior <- limite_superior + ancho_transicion
+  }
+  
+  # Asignar valores de penalización a partir de los 200 metros por encima del rango
+  penalizacion <- 7
+  while (limite_superior <= max(valores_elevacion, na.rm = TRUE)) {
+    raster_reclasificado[raster_elevacion > limite_superior] <- penalizacion
+    penalizacion <- penalizacion + 3
+    limite_superior <- limite_superior + 100  # Aumentar el límite superior en 100 metros
+  }
+  
+  # Reiniciar los límites para la segunda parte del script
+  limite_inferior <- primer_rango_elevacion[1]
+  limite_superior <- primer_rango_elevacion[2]
+  
+  # Asignar valores de penalización gradual por debajo del rango
+  penalizacion <- 2
+  # Limitar el proceso de actualización del limite_inferior a 300 metros por debajo del rango inicial
+  while ((limite_inferior - ancho_transicion) >= (primer_rango_elevacion[1] - 300)) {
+    raster_reclasificado[raster_elevacion < limite_inferior & 
+                           raster_elevacion >= (limite_inferior - ancho_transicion)] <- penalizacion
+    penalizacion <- penalizacion + 2
+    limite_inferior <- limite_inferior - ancho_transicion
+  }
+  
+  # Asignar valores de penalización a partir de los 300 metros por debajo del rango
+  penalizacion <- 9
+  while (limite_inferior >= min(valores_elevacion, na.rm = TRUE)) {
+    raster_reclasificado[raster_elevacion < limite_inferior] <- penalizacion
+    penalizacion <- penalizacion + 3
+    limite_inferior <- limite_inferior - 100  # Reducir el límite inferior en 100 metros
+  }
+  
+  
+  # Agregar el raster reclasificado a la lista
+  rasters_reclasificados[[1]] <- raster_reclasificado
+} else {
+  # Si todos los valores de elevación son NA, agregamos un raster NA a la lista
+  rasters_reclasificados[[1]] <- raster::raster(raster_elevacion)
+}
+
+# Seleccionar el primer raster reclasificado de la lista
+raster_reclasificado <- rasters_reclasificados[[1]]
+
+# Especificar la ruta y nombre del archivo de salida
+ruta_salida <- "C:/Users/Usuario/Desktop/Archivos_tesis/Rasters_reclasificados/"
+
+# Escribir el raster en formato GeoTIFF
+writeRaster(raster_reclasificado, filename = ruta_salida, format = "GTiff", overwrite = TRUE)
+
+### Ver valores del raster
+valores_unicos <- unique(values(rasters_reclasificados[[1]]))
+###
+
+################################################################################
+########### Iteración sobre la lista de rangos para reclasificarlos ############
+################################################################################
+
+library(raster)
+
+rangos_elevacion <- list(
+  c(2000, 2700),
+  c(2100, 2800),
+  c(2200, 2900),
+  c(2300, 3000),
+  c(2400, 3100),
+  c(2500, 3200),
+  c(2600, 3300),
+  c(2700, 3400),
+  c(2800, 3500),
+  c(2900, 3600),
+  c(3000, 3700),
+  c(3100, 3800),
+  c(3200, 3900),
+  c(3300, 4000),
+  c(3400, 4100),
+  c(3500, 4200),
+  c(3600, 4300),
+  c(3700, 4400),
+  c(3800, 4500),
+  c(3900, 4600),
+  c(4000, 4700),
+  c(4100, 4800)
+)
+
+# Cargar el raster de elevación
+raster_elevacion <- raster("C:/Users/Usuario/Documents/Spearman/COL_alt.asc")
+
+#Este código asigna al raster raster_elevacion un sistema de referencia basado en coordenadas de longitud y latitud con el datum WGS84, asegurando que las coordenadas geográficas se interpreten correctamente.
+crs(raster_elevacion) <- "+proj=longlat +datum=WGS84 +no_defs"
+
+# Crear una lista para almacenar los raster reclasificados
+rasters_reclasificados <- list()
+
+# Definir el ancho de la zona de transición
+ancho_transicion <- 100  # Ancho de la zona de transición gradual (en metros)
+
+# Iterar sobre todos los rangos de elevación en la lista
+for (i in seq_along(rangos_elevacion)) {
+  # Tomar el rango de elevación actual
+  rango_elevacion <- rangos_elevacion[[i]]
+  
+  # Definir los límites de reclasificación para el rango actual
+  limite_inferior <- rango_elevacion[1]
+  limite_superior <- rango_elevacion[2]
+  
+  # Extraer los valores de elevación en las coordenadas de los píxeles
+  # El siguiente bloque de código utiliza la función `xyFromCell` del paquete `raster` para extraer las coordenadas espaciales (x, y) de cada celda en un raster de elevación. Estas coordenadas se almacenan en una matriz llamada `coordenadas_raster`, donde cada fila representa una celda del raster, y las columnas contienen las coordenadas geográficas correspondientes.
+  # Usar raster::extract junto con raster::xyFromCell en la misma línea permite extraer directamente los valores de todas las celdas del raster en sus respectivas ubicaciones (primero obtiene las coordenadas y luego extrae esos valores)
+  
+    valores_elevacion <- raster::extract(raster_elevacion, raster::xyFromCell(raster_elevacion, 1:ncell(raster_elevacion)))
+  
+  # Si hay al menos un valor de elevación no NA, procedemos con la reclasificación
+  if (any(!is.na(valores_elevacion))) {
+    # Crear un raster con las mismas dimensiones y extensión que el raster de elevación
+    raster_reclasificado <- raster::raster(raster_elevacion)
+    
+    ## PÁRAMO
+    
+    # Asignar valor 1 para el rango definido por las franjas de páramo
+    raster_reclasificado[raster_elevacion >= limite_inferior & 
+                           raster_elevacion <= limite_superior] <- 1
+    
+    ## SUPERPÁRAMO
+    
+    # Asignar valores de penalización gradual por encima del rango
+    penalizacion <- 2
+    # Este código reclasifica el raster "raster_reclasificado" asignando valores de penalización que aumentan gradualmente a medida que se mueve hacia rangos de elevación más altos. Se limita el rango de elevación que se reclasifica a 200 metros por encima del rango original, y se utiliza un bucle while para aplicar esta reclasificación de forma iterativa hasta alcanzar ese límite.
+    while ((limite_superior + ancho_transicion) <= (rango_elevacion[2] + 200)) {
+      raster_reclasificado[raster_elevacion > limite_superior & 
+                             raster_elevacion <= (limite_superior + ancho_transicion)] <- penalizacion
+      penalizacion <- penalizacion + 2 # Aumento en la penalización
+      limite_superior <- limite_superior + ancho_transicion # Nuevo limite superior
+    }
+    
+    # Este bloque de código continúa la reclasificación del raster asignando valores de penalización cada vez mayores a las celdas con elevaciones superiores. El proceso comienza a partir de 200 metros por encima del rango inicial y sigue hasta el valor máximo de elevación en el raster. A medida que el limite_superior aumenta en 100 metros en cada iteración, la penalización también aumenta, comenzando en 7 y sumando 3 en cada paso.
+    penalizacion <- 7 # Despues de penalizar +1 (dentro del rango) +2 (primeros 100m despues del limite superior) y +2 (que corresponde a un valor de 4 para los segundos 100m despues del limite actualizado), comienza el siguiente pixel con un valor de 7, ya que se comienza a sumar +3 aqui hasta finalizar el limite maximo del raster
+    while (limite_superior <= max(valores_elevacion, na.rm = TRUE)) {
+      raster_reclasificado[raster_elevacion > limite_superior] <- penalizacion
+      penalizacion <- penalizacion + 3 # Aumento en la penalización
+      limite_superior <- limite_superior + 100  # Aumentar el límite superior en 100 metros
+    }
+    
+    # Reiniciar los límites para la segunda parte del bucle que se encarga del limite inferior
+    limite_inferior <- rango_elevacion[1]
+    limite_superior <- rango_elevacion[2]
+    
+    ## SUBPÁRAMO
+    
+    # Asignar valores de penalización gradual por debajo del rango
+    penalizacion <- 2
+    # Este bloque de código reclasifica el raster "raster_reclasificado" asignando valores de penalización que aumentan gradualmente a medida que se mueve hacia rangos de elevación más altos. Se limita el rango de elevación que se reclasifica a 300 metros por encima del rango original, y se utiliza un bucle while para aplicar esta reclasificación de forma iterativa hasta alcanzar ese límite.
+    while ((limite_inferior - ancho_transicion) >= (rango_elevacion[1] - 300)) {
+      raster_reclasificado[raster_elevacion < limite_inferior & 
+                             raster_elevacion >= (limite_inferior - ancho_transicion)] <- penalizacion
+      penalizacion <- penalizacion + 2 # Aumento en la penalización
+      limite_inferior <- limite_inferior - ancho_transicion
+    }
+    
+    # Este bloque de código continúa la reclasificación del raster asignando valores de penalización cada vez mayores a las celdas con elevaciones inferiores. El proceso comienza a partir de 300 metros por debajo del rango inicial y sigue hasta el valor minimo de elevación en el raster. A medida que el limite_inferior disminuye en 100 metros en cada iteración, la penalización también aumenta, comenzando en 9 y sumando 3 en cada paso.
+    penalizacion <- 9   # Despues de penalizar +1 (dentro del rango) +2 (primeros 100m despues del limite superior) y +2 (que corresponde a un valor de 4 para los segundos 100m despues del limite actualizado) y +2 (que corresponde a un valor de 6 para los terceros 100m despues del limite actualizado) comienza el siguiente pixel con un valor de 9, ya que se comienza a sumar +3 aqui hasta finalizar el limite maximo del raster
+    while (limite_inferior >= min(valores_elevacion, na.rm = TRUE)) {
+      raster_reclasificado[raster_elevacion < limite_inferior] <- penalizacion
+      penalizacion <- penalizacion + 3 # Aumento en la penalización
+      limite_inferior <- limite_inferior - 100  # Reducir el límite inferior en 100 metros
+    }
+    
+    # Agregar el raster reclasificado a la lista
+    rasters_reclasificados[[i]] <- raster_reclasificado
+  } else {
+    # Si todos los valores de elevación son NA, agregamos un raster NA a la lista
+    rasters_reclasificados[[i]] <- raster::raster(raster_elevacion)
+  }
+}
+
+#### Ver valores del raster
+
+
+for (i in seq_along(rasters_reclasificados)) {
+  cat("Valores únicos para el raster", i, ":\n")
+  print(unique(values(rasters_reclasificados[[i]])))
+}
+####
+
+################################################################################
+########################### PASAR RASTER RC A .tif #############################
+################################################################################
+
+library(raster)
+
+# Seleccionar el primer raster reclasificado de la lista
+raster_reclasificado <- rasters_reclasificados[[1]]
+
+# Especificar la ruta y nombre del archivo de salida
+ruta_salida <- "C:/Users/Usuario/Desktop/Archivos_tesis/Rasters_reclasificados/"
+
+# Escribir el raster en formato GeoTIFF
+writeRaster(raster_reclasificado, filename = ruta_salida, format = "GTiff", overwrite = TRUE)
+
+#### Todos los items de la lista:
+ 
+# Iterar sobre los rangos y los rasters reclasificados
+for (i in seq_along(rangos_elevacion)) {
+  # Seleccionar el raster reclasificado actual
+  raster_reclasificado <- rasters_reclasificados[[i]]
+  
+  # Obtener el valor del rango correspondiente
+  valor_rango <- rangos_elevacion[[i]]
+  
+  # Generar el nombre del archivo de salida
+  nombre_archivo <- paste0("C:/Users/Usuario/Desktop/Archivos_tesis/Rasters_reclasificados/RC_", valor_rango[1], "_", valor_rango[2], ".tif")
+  
+  # Escribir el raster en formato GeoTIFF
+  writeRaster(raster_reclasificado, filename = nombre_archivo, format = "GTiff", overwrite = TRUE)
+}
+
+
+################################################################################
+############# REPROYECTAR RASTERS A FORMATO INT8 Y SISTEMA 32618 ################
+################################################################################
+
+library(raster)
+
+# Carpeta de entrada y salida
+carpeta_entrada <- "C:/Users/Usuario/Desktop/Archivos_tesis/Rasters_reclasificados"
+carpeta_salida <- "C:/Users/Usuario/Desktop/Archivos_tesis/RC_WGS_32618"
+
+# Verificar si la carpeta de salida existe, si no, crearla
+if (!file.exists(carpeta_salida)) {
+  dir.create(carpeta_salida, recursive = TRUE)
+}
+
+# Listar los archivos .tiff en la carpeta de entrada
+archivos_tiff <- list.files(carpeta_entrada, pattern = "\\.tif$", full.names = TRUE)
+
+# Iterar sobre los archivos .tiff
+for (archivo in archivos_tiff) {
+  # Cargar el raster
+  raster_actual <- raster(archivo)
+  
+  # Proyectar el raster al sistema de coordenadas 32618
+  raster_proyectado <- projectRaster(raster_actual, crs = "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs", resample = "ngb")
+  
+  # Recortar los valores por debajo de 1 a 1
+  raster_proyectado <- clamp(raster_proyectado, 1, Inf)
+  
+  # Obtener el nombre del archivo sin la ruta ni la extensión
+  nombre_archivo <- gsub(".tif", "", basename(archivo))
+  
+  # Crear el nombre del archivo de salida usando el nombre del archivo original
+  nombre_archivo_salida <- paste0("EPSG_32618_", nombre_archivo, ".tif")
+  
+  # Guardar el raster proyectado como archivo GeoTIFF en la carpeta de salida
+  writeRaster(raster_proyectado, 
+              file.path(carpeta_salida, nombre_archivo_salida), 
+              format = "GTiff", 
+              datatype = "INT1U",  # Especificar el tipo de datos como Int8
+              overwrite = TRUE)
+}
+
+
+################################################################################
+################# CAMBIO DE PUNTOS DE COORDENADAS POR PIXELES ##################
+################################################################################
+
+##Introducción
+
+#Este codigo es particularmente útil para la reclasificación de píxeles individuales en un raster, lo cual es beneficioso en aplicaciones como el modelado de conectividad, entre otros usos. El script toma un raster y un archivo .csv con coordenadas de muestras asociadas, utilizando estas coordenadas para identificar píxeles específicos dentro del raster. Luego, asigna valores específicos a cada píxel. En el ejemplo proporcionado, el script comienza con un valor de 150 para el primer píxel correspondiente a la primera coordenada en el archivo .csv, y continúa de forma incremental (151, 152, etc.) hasta cubrir todas las coordenadas disponibles. Sin embargo, es posible personalizar los valores asignados según las necesidades del análisis.
+
+# Cargar las bibliotecas necesarias
+library(sf)
+library(raster)
+
+# Definir la carpeta de entrada para los archivos raster
+carpeta_entrada <- "C:/Users/Usuario/Desktop/Archivos_tesis/RC_WGS_32618"
+
+# Definir la carpeta de salida para los archivos raster modificados
+carpeta_salida <- "C:/Users/Usuario/Desktop/Archivos_tesis/RC_WGS_32618/RC_WGS_32618_with_buffers"
+
+### CAMBIAR ---> Definir la ubicación del archivo CSV con los puntos
+archivo_puntos <- "C:/Users/Usuario/Desktop/Archivos_tesis/Clados_defin/Clados_Combinados - copia.csv"
+
+# Cargar los puntos desde el archivo CSV
+puntos <- read.csv(archivo_puntos)
+
+# Convertir los puntos a objetos sf
+puntos_sf <- st_as_sf(puntos, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Proyectar los puntos al sistema de coordenadas 32618
+if (!identical(st_crs(puntos_sf), CRS("+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs"))) {
+  puntos_sf <- st_transform(puntos_sf, crs = 32618)
+}
+
+# Leer los archivos raster de la carpeta de entrada
+archivos_raster <- list.files(carpeta_entrada, pattern = "\\.tif$", full.names = TRUE)
+
+# Iterar sobre cada archivo raster
+for (archivo_raster in archivos_raster) {
+  # Cargar el raster original
+  raster_original <- raster(archivo_raster)
+  
+  # Crear un raster vacío con la misma extensión y resolución que el raster original
+  raster_bufferizado <- rasterize(puntos_sf, raster_original, field = 1)
+  
+  # Obtener las coordenadas de los puntos
+  coords_puntos <- st_coordinates(puntos_sf)
+  
+  # Obtener las celdas que contienen los puntos
+  celdas_puntos <- cellFromXY(raster_original, coords_puntos)
+  
+  # Asignar valores secuenciales a los píxeles que contienen los puntos
+  valores_asignados <- seq(150, 150 + length(celdas_puntos) - 1)
+  
+  # Reclasificar los píxeles que contienen los puntos
+  raster_bufferizado[celdas_puntos] <- valores_asignados
+  
+  # Combinar el raster original con el raster bufferizado
+  raster_combinado <- raster_original
+  raster_combinado[raster_bufferizado != 0] <- raster_bufferizado[raster_bufferizado != 0]
+  
+  # Guardar el raster combinado como un nuevo archivo TIFF
+  nombre_archivo_salida <- paste0("Puntos_", basename(archivo_raster))
+  writeRaster(raster_combinado, file.path(carpeta_salida, nombre_archivo_salida), format = "GTiff", overwrite = TRUE, datatype = "INT1U")
+}
+
+
+################################################################################
+######## Enumeración de pixeles en el orden de Graphab de norte a sur ##########
+################################################################################
+
+# El siguiente codigo tiene un fin muy especifico dentro del modelado de conectividad usando Graphab.
+# Graphab, al cargar el raster que contiene los parches enumera los parches desde 1 hasta el numero total de parches, y lo hace de oeste a este, y de norte a sur. La enumeración producida, es la identididad del output de los indices entre parches, es decir, es el Site ID, el cual en este caso corresponde a una especie en particular. Este script lo que hace es permitir dar una trazabilidad de los parches, ya que con graphab la indentidad de las especies se pierde, es por eso que asigna un ID numerico unico, que mas adelante en el informe final de conectividad sera usado para regresarle la identidad original.
+
+# Cargar las bibliotecas necesarias
+library(sf)
+library(dbplyr)
+
+# Definir la ubicación del archivo CSV con los puntos
+archivo_puntos <- "C:/Users/Usuario/Desktop/Archivos_tesis/Clados_defin/Clados_Combinados.csv"
+
+# Cargar los puntos desde el archivo CSV
+puntos <- read.csv(archivo_puntos, header = TRUE)
+
+# Convertir el dataframe en un objeto sf
+puntos_sf <- st_as_sf(x = puntos, 
+                      coords = c("Longitude", "Latitude"), 
+                      crs = 4326)
+
+# Ordenar los puntos de acuerdo a su posición geográfica de forma descendente
+puntos_sf <- puntos_sf[order(-st_coordinates(puntos_sf)[, "Y"], -st_coordinates(puntos_sf)[, "X"]), ]
+
+# Asignar valores secuenciales a los puntos
+puntos_sf$valor_enumerado <- seq_len(nrow(puntos_sf))
+
+# Guardar el archivo CSV con los puntos ordenados y enumerados de forma descendente
+write.csv(puntos_sf, file = archivo_puntos, row.names = FALSE)
+
+# Definir la ubicación del archivo CSV
+archivo_puntos2 <- "C:/Users/Usuario/Desktop/Archivos_tesis/Clados_defin/Clados_Combinados.csv"
+
+# Cargar los puntos desde el archivo CSV sin encabezados
+puntos2 <- read.csv(archivo_puntos2, header = FALSE)
+
+# Renombrar las columnas
+colnames(puntos2) <- c("Site.ID", "Longitude", "Latitude", "ID")
+
+# Eliminar la primera fila que contiene los encabezados incorrectos
+puntos2 <- puntos2[-1, ]
+
+# Eliminar las expresiones "c(" de la columna Latitude
+puntos2$Longitude <- gsub("c\\(", "", puntos2$Longitude)
+
+# Eliminar las expresiones ")" de la columna Longitude
+puntos2$Latitude <- gsub("\\)", "", puntos2$Latitude)
+
+# Intercambiar las columnas Latitude y Longitude
+puntos2 <- puntos2[, c("Site.ID", "Latitude", "Longitude", "ID")]
+
+# Guardar el archivo CSV con los cambios realizados
+write.csv(puntos2, file = archivo_puntos2, row.names = FALSE)
+
+
+################################################################################
+################# GRAPHAB - TODOS LOS MODELOS MEDIANTE JAVA ####################
+################################################################################
+
+#El siguiente código integra Java dentro de R utilizando el software Graphab. En este caso, se emplea el paquete rJava para ejecutar el archivo .jar de Graphab, que debe descargarse desde su página oficial [página oficial](https://sourcesup.renater.fr/www/graphab/en/home.html). En este ejemplo, se utilizó la versión 2.8.6. Además, se utiliza una superficie de costos o raster de costos, así como un raster que contiene los parches dentro del paisaje, similar a cómo se haría con el software Graphab. Se emplea una configuración específica, pero esta puede modificarse según el caso. Toda la información relacionada se encuentra en el manual de Graphab. El código también está estructurado en un bucle for, lo que permite automatizar el proceso para distintas superficies de costo. En este caso, se utilizan diferentes superficies de costo con los mismos parches, aunque es posible incluir distintos parches para cada superficie de resistencia si fuera necesario.
+
+
+library(rJava)
+
+# Define el path del archivo JAR
+jar_path <- "C:/Users/Usuario/Desktop/Archivos_tesis/graphab-2.8.6.jar"
+
+# Carga el archivo JAR
+.jinit()
+.jaddClassPath(jar_path)
+
+# Especificar la ruta de la carpeta que contiene los archivos .tif
+carpeta_archivos <- "C:/Users/Usuario/Desktop/Archivos_tesis/RC_WGS_32618/RC_WGS_32618_with_buffers/" # Contiene los raster donde estan los parches
+carpeta_costos <- "C:/Users/Usuario/Desktop/Archivos_tesis/RC_WGS_32618/" # Contiene los raster de costos
+
+# Especificar la ruta de la carpeta donde se guardarán los resultados de Graphab
+carpeta_resultados <- "C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/"
+
+# Obtener la lista de archivos .tif en la carpeta de archivos
+archivos_tif <- list.files(carpeta_archivos, pattern = "\\.tif$", full.names = TRUE)
+archivos_costos <- list.files(carpeta_costos, pattern = "\\.tif$", full.names = TRUE)
+
+# Ordenar los archivos alfabéticamente para asegurar que se tomen de a pares, esto con el fin de que el bluce for tome el raster de costos que corresponda al raster que contiene los parches (Hay que asegurarse que los nombres tengan una particularidad que les permita estar bien ordenados)
+archivos_tif <- sort(archivos_tif)
+archivos_costos <- sort(archivos_costos)
+
+# Verificar que el número de archivos coincida
+if (length(archivos_tif) != length(archivos_costos)) {
+  stop("La cantidad de archivos de entrada no coincide.")
+}
+
+# Iterar sobre los archivos de a pares
+for (i in seq_along(archivos_tif)) {
+  # Obtener el nombre del archivo actual y su par de costo
+  archivo_tif <- archivos_tif[i]
+  archivo_costo <- archivos_costos[i]
+  
+  # Obtener el número de la iteración para el nombre de la carpeta Conectparamo
+  numero_iteracion <- i
+  
+  # Obtener el nombre del archivo sin la ruta
+  nombre_archivo <- basename(archivo_costo)
+  
+  # Remover la extensión del archivo
+  nombre_sin_extension <- tools::file_path_sans_ext(nombre_archivo)
+  
+  # Crear el nombre de la carpeta Conectparamo correspondiente
+  carpeta_conectparamo <- file.path(carpeta_resultados, nombre_sin_extension)
+  
+  # Crear la carpeta Conectparamo si no existe
+  if (!dir.exists(carpeta_conectparamo)) {
+    dir.create(carpeta_conectparamo, recursive = TRUE)
+  }
+  
+  # Construir los argumentos para llamar al método main del archivo JAR
+  parametros <- c(
+    "--create", "Conectparamo",
+    archivo_tif,
+    "habitat=150,153",
+    "nodata=255",
+    "minarea=1",
+    "con8",
+    paste0("dir=", carpeta_conectparamo),
+    "--linkset", "distance=cost", "name=linkset1", "complete", "maxcost=100000000", 
+    paste0("extcost=", archivo_costo),
+    "--graph", "name=graph1", "threshold=100000000",
+    "--usegraph", "graph1",
+    "--lmetric", "CF", "beta=0.0",
+    "--lmetric", "CF", "beta=1.0"
+  )
+  
+  # Ejecutar el método main del archivo JAR con los parámetros definidos
+  .jcall("org.thema.graphab.MainFrame", "V", "main", parametros)
+}
+
+
+################################################################################
+######################## Linksets en nueva carpeta #############################
+################################################################################
+
+# Define la ruta de la carpeta principal de resultados
+ruta_principal <- "C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados"
+
+# Ruta de la carpeta de resultados para los archivos ordenados
+ruta_salida <- file.path(ruta_principal, "Resultados_lmetrics")
+
+# Crear la carpeta de resultados si no existe
+if (!dir.exists(ruta_salida)) {
+  dir.create(ruta_salida)
+}
+
+# Obtener la lista de subcarpetas dentro de la carpeta principal
+subcarpetas <- list.dirs(path = ruta_principal, full.names = TRUE, recursive = FALSE)
+
+# Inicializar contador para enumeración
+contador <- 1
+
+# Iterar sobre las subcarpetas
+for (subcarpeta in subcarpetas) {
+  # Obtener el nombre de la subcarpeta
+  nombre_subcarpeta <- basename(subcarpeta)
+  
+  # Obtener la ruta de la carpeta "Conectparamo" dentro de la subcarpeta
+  carpeta_conectparamo <- file.path(subcarpeta, "Conectparamo")
+  
+  # Obtener la lista de archivos CSV dentro de la carpeta "Conectparamo"
+  archivos_csv <- list.files(path = carpeta_conectparamo, pattern = "linkset1-links.csv", full.names = TRUE)
+  
+  # Iterar sobre los archivos CSV y procesarlos
+  for (archivo_csv in archivos_csv) {
+    # Leer el archivo CSV
+    datos <- read.csv(archivo_csv, stringsAsFactors = FALSE)
+    
+    # Ordenar las filas basadas en la columna "ID1"
+    #datos_ordenados <- datos[order(datos$ID1), ]
+    
+    # Construir el nombre del archivo de salida con enumeración al principio
+    nombre_archivo_salida <- paste0(contador, "_", nombre_subcarpeta, "_", basename(archivo_csv))
+    
+    # Escribir los datos (ordenados) en un nuevo archivo CSV en la carpeta de resultados
+    write.csv(datos, file = file.path(ruta_salida, nombre_archivo_salida), row.names = FALSE)
+    
+    # Incrementar contador
+    contador <- contador + 1
+  }
+}
+
+
+################################################################################
+#### CAMBIO DE ID DE LOS CSV DE LOS LINK-SETS POR LOS NOMBRES DE LAS ESPECIES ####
+################################################################################
+
+# Ruta del archivo CSV con los nombres correspondientes a los números
+archivo_nombres <- "C:/Users/Usuario/Desktop/Archivos_tesis/Clados_defin/Clados_todo_espeletia - copia (2).csv"
+
+# Leer el archivo CSV con los nombres
+nombres_df <- read.csv(archivo_nombres, stringsAsFactors = FALSE)
+
+# Crear un mapeo entre los números y los nombres
+mapeo_nombres <- setNames(nombres_df$Site.ID, nombres_df$ID)
+
+# Ruta de la carpeta de resultados para los archivos con nombres actualizados
+ruta_resultados <- "C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics"
+
+# Obtener la lista de archivos CSV en la carpeta de resultados
+archivos_csv <- list.files(ruta_resultados, pattern = "\\.csv$", full.names = TRUE)
+
+# Iterar sobre los archivos CSV en la carpeta de resultados
+for (archivo_csv in archivos_csv) {
+  # Leer el archivo CSV
+  datos <- read.csv(archivo_csv, stringsAsFactors = FALSE)
+  
+  # Reemplazar los números en las columnas "ID1" y "ID2" por los nombres correspondientes
+  datos$ID1 <- mapeo_nombres[as.character(datos$ID1)]
+  datos$ID2 <- mapeo_nombres[as.character(datos$ID2)]
+  
+  # Escribir los datos actualizados en el archivo CSV
+  write.csv(datos, file = archivo_csv, row.names = FALSE)
+}
+
+#### Ordenar (no usar)
+
+# Carga las librerías necesarias
+library(tidyverse)
+
+# Ruta de la carpeta con los archivos .csv
+ruta_archivos <- "C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics"
+
+# Lista los archivos .csv en la ruta
+archivos_csv <- list.files(ruta_archivos, pattern = "*.csv")
+
+# Función para ordenar un archivo .csv por dos columnas
+ordenar_csv <- function(archivo) {
+  # Lee el archivo .csv
+  datos <- read.csv(file.path(ruta_archivos, archivo))
+  
+  # Ordena las dos primeras columnas en orden alfabético
+  datos <- datos[order(datos[[1]], datos[[2]]), ]
+  
+  # Guarda el archivo .csv ordenado
+  write.csv(datos, file.path(ruta_archivos, archivo))
+}
+
+# Aplica la función a cada archivo .csv
+lapply(archivos_csv, ordenar_csv)
+
+
+################################################################################
+################# CALCULOS DE INDICE DE AGRUPACIÓN PONDERADA  ##################
+################################################################################
+
+
+# Leer la matriz de tiempos de divergencia
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Tiempos_divergencia/Tiempos_divergencia_Clado_Colombiano - copia.csv", stringsAsFactors = FALSE, row.names = 1)
+
+# Leer los datos de duración
+datos_duracion <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Matrices_UFL/UFL_duration.csv", stringsAsFactors = FALSE)
+
+# Leer la matriz con los límites para la suma de columnas
+matriz_limites <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Padre-Hijo_Tiempo/Padre-hijo_Clado_Colombiano - copia.csv", stringsAsFactors = FALSE, row.names = 1)
+
+# Se define una función para encontrar el valor más cercano en una columna
+encontrar_valor_cercano <- function(valor, columna) {
+  valor_cercano <- columna[which.min(abs(columna - valor))]
+  return(valor_cercano)
+}
+
+# Inicializar un marco de datos para almacenar los resultados finales
+resultados_finales <- data.frame(ID1 = character(), ID2 = character(), Dist = numeric(), DistM = numeric(), CF_beta0_graph1 = numeric(), CF_beta1_graph1 = numeric(), stringsAsFactors = FALSE)
+
+# Iterar sobre cada par de IDs
+for (i in 1:(nrow(matriz_tiempos) - 1)) {
+  for (j in (i + 1):nrow(matriz_tiempos)) {  
+    # Obtener el par de IDs actual
+    ID1 <- rownames(matriz_tiempos)[i]
+    ID2 <- rownames(matriz_tiempos)[j]
+    
+    # Calcular el tiempo de divergencia entre los pares de IDs
+    valor_tiempo <- as.numeric(matriz_tiempos[i, j])
+    
+    # Verificar si el valor de tiempo es numérico y no está en la diagonal principal
+    if (!is.na(valor_tiempo) && valor_tiempo != 0) {
+      cat("Procesando IDs:", ID1, "-", ID2, "\n")
+      cat("Valor de tiempo de divergencia:", valor_tiempo, "\n")
+      
+      # Buscar el valor más cercano en la columna "Age"
+      valor_cercano_inicio <- encontrar_valor_cercano(valor_tiempo, datos_duracion$Age)
+      cat("Valor más cercano en la columna 'Age' para el inicio de la suma:", valor_cercano_inicio, "\n")
+      
+      # Obtener el límite de la suma desde matriz_limites
+      limite_suma <- as.numeric(matriz_limites[i, j])  
+      cat("Límite de la suma obtenido desde matriz_limites:", limite_suma, "\n")
+      
+      # Buscar el valor más cercano en la columna "Age" para el límite de la suma
+      valor_cercano_fin <- encontrar_valor_cercano(limite_suma, datos_duracion$Age)
+      cat("Valor más cercano en la columna 'Age' para el fin de la suma:", valor_cercano_fin, "\n")
+      
+      # Calcular la suma de los valores desde el inicio hasta el límite especificado en matriz_limites
+      indice_fila_inicio <- which(datos_duracion$Age == valor_cercano_inicio)[1]
+      indice_fila_fin <- which(datos_duracion$Age == valor_cercano_fin)[1]
+      suma_valores <- colSums(datos_duracion[indice_fila_inicio:indice_fila_fin, 7:28], na.rm = TRUE)  
+      cat("Suma de los valores desde el inicio hasta el límite especificado en matriz_limites:\n")
+      print(suma_valores)
+      
+      # Identificar los totales que son mayores que cero
+      totales_positivos <- suma_valores[suma_valores > 0]
+      cat("Totales positivos:", totales_positivos, "\n")
+      
+      # Obtener los índices de las columnas con valores mayores que cero
+      indices_columnas <- as.numeric(gsub("X", "", names(totales_positivos)))
+      cat("Índices de las columnas con valores mayores que cero:", indices_columnas, "\n")
+      
+      # Obtener los nombres de los archivos en la carpeta de resultados
+      archivos_indices_nombres <- paste0("^(", paste(indices_columnas, collapse = "|"), "_)")
+      
+      # Filtrar los archivos correspondientes en la carpeta de resultados
+      archivos_indices <- list.files("C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics", 
+                                     pattern = archivos_indices_nombres, 
+                                     full.names = TRUE)
+      
+      # Ordenar los archivos según los números obtenidos
+      archivos_indices <- archivos_indices[order(as.numeric(gsub(".*/(\\d+)_.*", "\\1", archivos_indices)))]
+      
+      # Inicializar vectores para almacenar sumas ponderadas
+      suma_ponderada_Dist <- numeric(0)
+      suma_ponderada_DistM <- numeric(0)
+      suma_ponderada_CF_beta0_graph1 <- numeric(0)
+      suma_ponderada_CF_beta1_graph1 <- numeric(0)
+      
+      # Iterar sobre los archivos correspondientes
+      for (k in seq_along(archivos_indices)) {
+        # Leer el archivo
+        datos_archivo <- read.csv(archivos_indices[k], stringsAsFactors = FALSE)
+
+        # Filtrar los datos para el par de IDs actual (en ambos órdenes)
+        datos_filtrados_1 <- datos_archivo[datos_archivo$ID1 == ID1 & datos_archivo$ID2 == ID2, ]
+        datos_filtrados_2 <- datos_archivo[datos_archivo$ID1 == ID2 & datos_archivo$ID2 == ID1, ]
+        
+        # Verificar si hay datos filtrados
+        if (nrow(datos_filtrados_1) > 0) {
+        
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_1$Dist) 
+          suma_DistM <- sum(datos_filtrados_1$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_1$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_1$CF_beta1_graph1) 
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+        if (nrow(datos_filtrados_2) > 0) {
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_2$Dist) 
+          suma_DistM <- sum(datos_filtrados_2$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_2$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_2$CF_beta1_graph1) 
+          
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+      }
+      
+      # Imprimir sumas ponderadas finales
+      print("Sumas ponderadas finales:")
+      print(suma_ponderada_Dist)
+      print(suma_ponderada_DistM)
+      print(suma_ponderada_CF_beta0_graph1)
+      print(suma_ponderada_CF_beta1_graph1)
+      
+      # Calcular la ponderación final
+      ponderacion_final_Dist <- sum(suma_ponderada_Dist, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_DistM <- sum(suma_ponderada_DistM, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta0_graph1 <- sum(suma_ponderada_CF_beta0_graph1, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta1_graph1 <- sum(suma_ponderada_CF_beta1_graph1, na.rm = TRUE) / sum(totales_positivos)
+      
+      # Imprimir resultados finales
+      print("Resultados finales:")
+      print(ponderacion_final_Dist)
+      print(ponderacion_final_DistM)
+      print(ponderacion_final_CF_beta0_graph1)
+      print(ponderacion_final_CF_beta1_graph1)
+      
+      # Almacenar los resultados finales
+      resultados_finales <- rbind(resultados_finales, data.frame(ID1 = ID1, ID2 = ID2, Dist = ponderacion_final_Dist, DistM = ponderacion_final_DistM, CF_beta0_graph1 = ponderacion_final_CF_beta0_graph1, CF_beta1_graph1 = ponderacion_final_CF_beta1_graph1))
+    }
+  }
+}
+
+# Guardar los resultados finales en un archivo CSV
+write.csv(resultados_finales, file = "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_finales/Resultados_finales.csv", row.names = FALSE)
+
+
+
+################################################################################
+###### Indice de agrupación ponderada desde finales del Oloceno hasta TD #######
+################################################################################
+
+# Leer la matriz de tiempos de divergencia
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Tiempos_divergencia/Tiempos_divergencia_Espeletia.csv", stringsAsFactors = FALSE, row.names = 1)
+
+# Leer los datos de duración
+datos_duracion <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Matrices_UFL/UFL_duration.csv", stringsAsFactors = FALSE)
+
+# Se define una función para encontrar el valor más cercano en una columna
+encontrar_valor_cercano <- function(valor, columna) {
+  valor_cercano <- columna[which.min(abs(columna - valor))]
+  return(valor_cercano)
+}
+
+# Inicializar un marco de datos para almacenar los resultados finales
+resultados_finales <- data.frame(ID1 = character(), ID2 = character(), Dist = numeric(), DistM = numeric(), CF_beta0_graph1 = numeric(), CF_beta1_graph1 = numeric(), stringsAsFactors = FALSE)
+
+# Iterar sobre cada par de IDs
+for (i in 1:(nrow(matriz_tiempos) - 1)) {
+  for (j in (i + 1):nrow(matriz_tiempos)) {  
+    # Obtener el par de IDs actual
+    ID1 <- rownames(matriz_tiempos)[i]
+    ID2 <- rownames(matriz_tiempos)[j]
+    
+    # Calcular el tiempo de divergencia entre los pares de IDs
+    valor_tiempo <- as.numeric(matriz_tiempos[i, j])
+    
+    # Verificar si el valor de tiempo es numérico y no está en la diagonal principal
+    if (!is.na(valor_tiempo) && valor_tiempo != 0) {
+      cat("Procesando IDs:", ID1, "-", ID2, "\n")
+      cat("Valor de tiempo de divergencia:", valor_tiempo, "\n")
+      
+      # Valor de referencia en la columna "Age" (29.491 en este caso)
+      valor_referencia_age <- 29.491
+      cat("Valor de referencia en la columna 'Age':", valor_referencia_age, "\n")
+      
+      # Buscar el valor más cercano en la columna "Age" según el valor de tiempo de divergencia
+      valor_cercano_inicio <- encontrar_valor_cercano(valor_tiempo, datos_duracion$Age)
+      cat("Valor más cercano en la columna 'Age' al tiempo de divergencia:", valor_cercano_inicio, "\n")
+      
+      # Obtener el índice de la fila correspondiente al valor de referencia en "Age"
+      indice_fila_referencia <- which(datos_duracion$Age == valor_referencia_age)
+      cat("Índice de la fila correspondiente al valor de referencia en 'Age':", indice_fila_referencia, "\n")
+      
+      # Obtener el índice de la fila correspondiente al valor más cercano en "Age" al tiempo de divergencia
+      indice_fila_fin <- which.min(abs(datos_duracion$Age - valor_cercano_inicio))
+      cat("Índice de la fila correspondiente al valor más cercano en 'Age' al tiempo de divergencia:", indice_fila_fin, "\n")
+      
+      # Calcular la suma de los valores desde el valor de referencia en "Age" hasta el valor más cercano en "Age"
+      suma_valores <- colSums(datos_duracion[indice_fila_referencia:indice_fila_fin, 7:28], na.rm = TRUE)  
+      cat("Suma de los valores desde el valor de referencia en 'Age' hasta el valor más cercano en 'Age':\n")
+      print(suma_valores)
+      
+      # Identificar los totales que son mayores que cero
+      totales_positivos <- suma_valores[suma_valores > 0]
+      cat("Totales positivos:", totales_positivos, "\n")
+      
+      # Obtener los índices de las columnas con valores mayores que cero
+      indices_columnas <- as.numeric(gsub("X", "", names(totales_positivos)))
+      cat("Índices de las columnas con valores mayores que cero:", indices_columnas, "\n")
+      
+      # Obtener los nombres de los archivos en la carpeta de resultados
+      archivos_indices_nombres <- paste0("^(", paste(indices_columnas, collapse = "|"), "_)")
+      
+      # Filtrar los archivos correspondientes en la carpeta de resultados
+      archivos_indices <- list.files("C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics", 
+                                     pattern = archivos_indices_nombres, 
+                                     full.names = TRUE)
+      
+      # Ordenar los archivos según los números obtenidos
+      archivos_indices <- archivos_indices[order(as.numeric(gsub(".*/(\\d+)_.*", "\\1", archivos_indices)))]
+      
+      # Inicializar vectores para almacenar sumas ponderadas
+      suma_ponderada_Dist <- numeric(0)
+      suma_ponderada_DistM <- numeric(0)
+      suma_ponderada_CF_beta0_graph1 <- numeric(0)
+      suma_ponderada_CF_beta1_graph1 <- numeric(0)
+      
+      # Iterar sobre los archivos correspondientes
+      for (k in seq_along(archivos_indices)) {
+        # Leer el archivo
+        datos_archivo <- read.csv(archivos_indices[k], stringsAsFactors = FALSE)
+        
+        # Filtrar los datos para el par de IDs actual (en ambos órdenes)
+        datos_filtrados_1 <- datos_archivo[datos_archivo$ID1 == ID1 & datos_archivo$ID2 == ID2, ]
+        datos_filtrados_2 <- datos_archivo[datos_archivo$ID1 == ID2 & datos_archivo$ID2 == ID1, ]
+        
+        # Verificar si hay datos filtrados
+        if (nrow(datos_filtrados_1) > 0) {
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_1$Dist) 
+          suma_DistM <- sum(datos_filtrados_1$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_1$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_1$CF_beta1_graph1) 
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+        if (nrow(datos_filtrados_2) > 0) {
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_2$Dist) 
+          suma_DistM <- sum(datos_filtrados_2$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_2$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_2$CF_beta1_graph1) 
+          
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+      }
+      
+      # Imprimir sumas ponderadas finales
+      print("Sumas ponderadas finales:")
+      print(suma_ponderada_Dist)
+      print(suma_ponderada_DistM)
+      print(suma_ponderada_CF_beta0_graph1)
+      print(suma_ponderada_CF_beta1_graph1)
+      
+      # Calcular la ponderación final
+      ponderacion_final_Dist <- sum(suma_ponderada_Dist, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_DistM <- sum(suma_ponderada_DistM, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta0_graph1 <- sum(suma_ponderada_CF_beta0_graph1, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta1_graph1 <- sum(suma_ponderada_CF_beta1_graph1, na.rm = TRUE) / sum(totales_positivos)
+      
+      # Imprimir resultados finales
+      print("Resultados finales:")
+      print(ponderacion_final_Dist)
+      print(ponderacion_final_DistM)
+      print(ponderacion_final_CF_beta0_graph1)
+      print(ponderacion_final_CF_beta1_graph1)
+      
+      # Almacenar los resultados finales
+      resultados_finales <- rbind(resultados_finales, data.frame(ID1 = ID1, ID2 = ID2, Dist = ponderacion_final_Dist, DistM = ponderacion_final_DistM, CF_beta0_graph1 = ponderacion_final_CF_beta0_graph1, CF_beta1_graph1 = ponderacion_final_CF_beta1_graph1))
+    }
+  }
+}
+
+# Guardar los resultados finales en un archivo CSV
+write.csv(resultados_finales, file = "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_finales/Resultados_finales_TD_Oloceno.csv", row.names = FALSE)
+
+
+
+
+################################################################################
+############ Indice de agrupación ponderada desde TD hasta 2.5ma ###############
+################################################################################
+
+# Leer la matriz de tiempos de divergencia
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Tiempos_divergencia/Tiempos_divergencia_Espeletia.csv", stringsAsFactors = FALSE, row.names = 1)
+
+# Leer los datos de duración
+datos_duracion <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Matrices_UFL/UFL_duration.csv", stringsAsFactors = FALSE)
+
+# Se define una función para encontrar el valor más cercano en una columna
+encontrar_valor_cercano <- function(valor, columna) {
+  valor_cercano <- columna[which.min(abs(columna - valor))]
+  return(valor_cercano)
+}
+
+# Inicializar un marco de datos para almacenar los resultados finales
+resultados_finales <- data.frame(ID1 = character(), ID2 = character(), Dist = numeric(), DistM = numeric(), CF_beta0_graph1 = numeric(), CF_beta1_graph1 = numeric(), stringsAsFactors = FALSE)
+
+# Iterar sobre cada par de IDs
+for (i in 1:(nrow(matriz_tiempos) - 1)) {
+  for (j in (i + 1):nrow(matriz_tiempos)) {  
+    # Obtener el par de IDs actual
+    ID1 <- rownames(matriz_tiempos)[i]
+    ID2 <- rownames(matriz_tiempos)[j]
+    
+    # Calcular el tiempo de divergencia entre los pares de IDs
+    valor_tiempo <- as.numeric(matriz_tiempos[i, j])
+    
+    # Verificar si el valor de tiempo es numérico y no está en la diagonal principal
+    if (!is.na(valor_tiempo) && valor_tiempo != 0) {
+      cat("Procesando IDs:", ID1, "-", ID2, "\n")
+      cat("Valor de tiempo de divergencia:", valor_tiempo, "\n")
+      
+      # Buscar el valor más cercano en la columna "Age" según el valor de tiempo de divergencia
+      valor_cercano_inicio <- encontrar_valor_cercano(valor_tiempo, datos_duracion$Age)
+      cat("Valor más cercano en la columna 'Age' al tiempo de divergencia:", valor_cercano_inicio, "\n")
+      
+      # Obtener el índice de la fila correspondiente al valor más cercano en "Age"
+      indice_fila_inicio <- which(datos_duracion$Age == valor_cercano_inicio)
+      cat("Índice de la fila correspondiente al valor más cercano en 'Age':", indice_fila_inicio, "\n")
+      
+      # Calcular la suma de los valores desde el valor más cercano en "Age" hasta el final de todas las filas
+      suma_valores <- colSums(datos_duracion[indice_fila_inicio:nrow(datos_duracion), 7:28], na.rm = TRUE)  
+      cat("Suma de los valores desde el valor más cercano en 'Age' hasta el final de todas las filas:\n")
+      print(suma_valores)
+      
+      # Identificar los totales que son mayores que cero
+      totales_positivos <- suma_valores[suma_valores > 0]
+      cat("Totales positivos:", totales_positivos, "\n")
+      
+      # Obtener los índices de las columnas con valores mayores que cero
+      indices_columnas <- as.numeric(gsub("X", "", names(totales_positivos)))
+      cat("Índices de las columnas con valores mayores que cero:", indices_columnas, "\n")
+      
+      # Obtener los nombres de los archivos en la carpeta de resultados
+      archivos_indices_nombres <- paste0("^(", paste(indices_columnas, collapse = "|"), "_)")
+      
+      # Filtrar los archivos correspondientes en la carpeta de resultados
+      archivos_indices <- list.files("C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics", 
+                                     pattern = archivos_indices_nombres, 
+                                     full.names = TRUE)
+      
+      # Ordenar los archivos según los números obtenidos
+      archivos_indices <- archivos_indices[order(as.numeric(gsub(".*/(\\d+)_.*", "\\1", archivos_indices)))]
+      
+      # Inicializar vectores para almacenar sumas ponderadas
+      suma_ponderada_Dist <- numeric(0)
+      suma_ponderada_DistM <- numeric(0)
+      suma_ponderada_CF_beta0_graph1 <- numeric(0)
+      suma_ponderada_CF_beta1_graph1 <- numeric(0)
+      
+      # Iterar sobre los archivos correspondientes
+      for (k in seq_along(archivos_indices)) {
+        # Leer el archivo
+        datos_archivo <- read.csv(archivos_indices[k], stringsAsFactors = FALSE)
+        
+        # Filtrar los datos para el par de IDs actual (en ambos órdenes)
+        datos_filtrados_1 <- datos_archivo[datos_archivo$ID1 == ID1 & datos_archivo$ID2 == ID2, ]
+        datos_filtrados_2 <- datos_archivo[datos_archivo$ID1 == ID2 & datos_archivo$ID2 == ID1, ]
+        
+        # Verificar si hay datos filtrados
+        if (nrow(datos_filtrados_1) > 0) {
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_1$Dist) 
+          suma_DistM <- sum(datos_filtrados_1$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_1$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_1$CF_beta1_graph1) 
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+        if (nrow(datos_filtrados_2) > 0) {
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_2$Dist) 
+          suma_DistM <- sum(datos_filtrados_2$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_2$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_2$CF_beta1_graph1) 
+          
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+      }
+      
+      # Imprimir sumas ponderadas finales
+      print("Sumas ponderadas finales:")
+      print(suma_ponderada_Dist)
+      print(suma_ponderada_DistM)
+      print(suma_ponderada_CF_beta0_graph1)
+      print(suma_ponderada_CF_beta1_graph1)
+      
+      # Calcular la ponderación final
+      ponderacion_final_Dist <- sum(suma_ponderada_Dist, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_DistM <- sum(suma_ponderada_DistM, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta0_graph1 <- sum(suma_ponderada_CF_beta0_graph1, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta1_graph1 <- sum(suma_ponderada_CF_beta1_graph1, na.rm = TRUE) / sum(totales_positivos)
+      
+      # Imprimir resultados finales
+      print("Resultados finales:")
+      print(ponderacion_final_Dist)
+      print(ponderacion_final_DistM)
+      print(ponderacion_final_CF_beta0_graph1)
+      print(ponderacion_final_CF_beta1_graph1)
+      
+      # Almacenar los resultados finales
+      resultados_finales <- rbind(resultados_finales, data.frame(ID1 = ID1, ID2 = ID2, Dist = ponderacion_final_Dist, DistM = ponderacion_final_DistM, CF_beta0_graph1 = ponderacion_final_CF_beta0_graph1, CF_beta1_graph1 = ponderacion_final_CF_beta1_graph1))
+    }
+  }
+}
+
+# Guardar los resultados finales en un archivo CSV
+write.csv(resultados_finales, file = "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_finales/Resultados_finales_TD_2.5ma.csv", row.names = FALSE)
+
+
+################################################################################
+############ Indice de agrupación ponderada desde TD hasta 1.5ma ###############
+################################################################################
+
+# Leer la matriz de tiempos de divergencia
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Tiempos_divergencia/Tiempos_divergencia_Espeletia.csv", stringsAsFactors = FALSE, row.names = 1)
+
+# Leer los datos de duración
+datos_duracion <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Matrices_UFL/UFL_duration.csv", stringsAsFactors = FALSE)
+
+# Se define una función para encontrar el valor más cercano en una columna
+encontrar_valor
+#_cercano <- function(valor, columna) {
+  valor_cercano <- columna[which.min(abs(columna - valor))]
+  return(valor_cercano)
+
+# Inicializar un marco de datos para almacenar los resultados finales
+resultados_finales <- data.frame(ID1 = character(), ID2 = character(), Dist = numeric(), DistM = numeric(), CF_beta0_graph1 = numeric(), CF_beta1_graph1 = numeric(), stringsAsFactors = FALSE)
+
+# Iterar sobre cada par de IDs
+for (i in 1:(nrow(matriz_tiempos) - 1)) {
+  for (j in (i + 1):nrow(matriz_tiempos)) {  
+    # Obtener el par de IDs actual
+    ID1 <- rownames(matriz_tiempos)[i]
+    ID2 <- rownames(matriz_tiempos)[j]
+    
+    # Calcular el tiempo de divergencia entre los pares de IDs
+    valor_tiempo <- as.numeric(matriz_tiempos[i, j])
+    
+    # Verificar si el valor de tiempo es numérico y no está en la diagonal principal
+    if (!is.na(valor_tiempo) && valor_tiempo != 0) {
+      cat("Procesando IDs:", ID1, "-", ID2, "\n")
+      cat("Valor de tiempo de divergencia:", valor_tiempo, "\n")
+      
+      # Encontrar el valor más cercano en la columna "Age" al tiempo de divergencia
+      valor_cercano_inicio <- encontrar_valor_cercano(valor_tiempo, datos_duracion$Age)
+      cat("Valor más cercano en la columna 'Age' al tiempo de divergencia:", valor_cercano_inicio, "\n")
+      
+      # Encontrar la fila correspondiente al valor 1500.31 en la columna "Age"
+      indice_fila_fin <- which(datos_duracion$Age == 1500.312)
+      cat("Índice de la fila correspondiente al valor 1500.312 en 'Age':", indice_fila_fin, "\n")
+      
+      # Calcular la suma de los valores desde el valor más cercano en "Age" hasta la fila donde se encuentra el valor 1500.31
+      suma_valores <- colSums(datos_duracion[which.min(abs(datos_duracion$Age - valor_cercano_inicio)):indice_fila_fin, 7:28], na.rm = TRUE)  
+      cat("Suma de los valores desde el valor más cercano en 'Age' hasta la fila donde se encuentra el valor 1500.31:\n")
+      print(suma_valores)
+      
+      # Identificar los totales que son mayores que cero
+      totales_positivos <- suma_valores[suma_valores > 0]
+      cat("Totales positivos:", totales_positivos, "\n")
+      
+      # Obtener los índices de las columnas con valores mayores que cero
+      indices_columnas <- as.numeric(gsub("X", "", names(totales_positivos)))
+      cat("Índices de las columnas con valores mayores que cero:", indices_columnas, "\n")
+      
+      # Obtener los nombres de los archivos en la carpeta de resultados
+      archivos_indices_nombres <- paste0("^(", paste(indices_columnas, collapse = "|"), "_)")
+      
+      # Filtrar los archivos correspondientes en la carpeta de resultados
+      archivos_indices <- list.files("C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics", 
+                                     pattern = archivos_indices_nombres, 
+                                     full.names = TRUE)
+      
+      # Ordenar los archivos según los números obtenidos
+      archivos_indices <- archivos_indices[order(as.numeric(gsub(".*/(\\d+)_.*", "\\1", archivos_indices)))]
+      
+      # Inicializar vectores para almacenar sumas ponderadas
+      suma_ponderada_Dist <- numeric(0)
+      suma_ponderada_DistM <- numeric(0)
+      suma_ponderada_CF_beta0_graph1 <- numeric(0)
+      suma_ponderada_CF_beta1_graph1 <- numeric(0)
+      
+      # Iterar sobre los archivos correspondientes
+      for (k in seq_along(archivos_indices)) {
+        # Leer el archivo
+        datos_archivo <- read.csv(archivos_indices[k], stringsAsFactors = FALSE)
+        
+        # Filtrar los datos para el par de IDs actual (en ambos órdenes)
+        datos_filtrados_1 <- datos_archivo[datos_archivo$ID1 == ID1 & datos_archivo$ID2 == ID2, ]
+        datos_filtrados_2 <- datos_archivo[datos_archivo$ID1 == ID2 & datos_archivo$ID2 == ID1, ]
+        
+        # Verificar si hay datos filtrados
+        if (nrow(datos_filtrados_1) > 0) {
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_1$Dist) 
+          suma_DistM <- sum(datos_filtrados_1$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_1$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_1$CF_beta1_graph1) 
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+        if (nrow(datos_filtrados_2) > 0) {
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_2$Dist) 
+          suma_DistM <- sum(datos_filtrados_2$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_2$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_2$CF_beta1_graph1) 
+          
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+      }
+      
+      # Imprimir sumas ponderadas finales
+      print("Sumas ponderadas finales:")
+      print(suma_ponderada_Dist)
+      print(suma_ponderada_DistM)
+      print(suma_ponderada_CF_beta0_graph1)
+      print(suma_ponderada_CF_beta1_graph1)
+      
+      # Calcular la ponderación final
+      ponderacion_final_Dist <- sum(suma_ponderada_Dist, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_DistM <- sum(suma_ponderada_DistM, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta0_graph1 <- sum(suma_ponderada_CF_beta0_graph1, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta1_graph1 <- sum(suma_ponderada_CF_beta1_graph1, na.rm = TRUE) / sum(totales_positivos)
+      
+      # Imprimir resultados finales
+      print("Resultados finales:")
+      print(ponderacion_final_Dist)
+      print(ponderacion_final_DistM)
+      print(ponderacion_final_CF_beta0_graph1)
+      print(ponderacion_final_CF_beta1_graph1)
+      
+      # Almacenar los resultados finales
+      resultados_finales <- rbind(resultados_finales, data.frame(ID1 = ID1, ID2 = ID2, Dist = ponderacion_final_Dist, DistM = ponderacion_final_DistM, CF_beta0_graph1 = ponderacion_final_CF_beta0_graph1, CF_beta1_graph1 = ponderacion_final_CF_beta1_graph1))
+    }
+  }
+}
+
+# Guardar los resultados finales en un archivo CSV
+write.csv(resultados_finales, file = "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_finales/Resultados_finales_TD_1.5ma.csv", row.names = FALSE)
+
+################################################################################
+########## Transformar de lista de relaciones (tabla de indicendia) ############
+################# a matriz de distancia (matriz de confusión) ##################
+################################################################################
+
+# Leer el archivo CSV con los resultados finales
+resultados_finales <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_finales/Resultados_finales_Clado_Venezolano.csv", stringsAsFactors = FALSE)
+
+#resultados_finales <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics/13_EPSG_32618_RC_3200_3900_linkset1-links.csv", stringsAsFactors = FALSE)
+
+# Obtener los valores únicos de ID1 e ID2 y ordenarlos
+id_values <- sort(unique(c(resultados_finales$ID1, resultados_finales$ID2)))
+
+# Crear un directorio para almacenar las matrices cuadradas
+directorio_destino <- "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/"
+#directorio_destino <- "C:/Users/Usuario/Desktop/Archivos_tesis/"
+
+dir.create(directorio_destino, showWarnings = FALSE)
+
+# Iterar sobre cada métrica
+for (metrica in c("Dist", "DistM", "CF_beta0_graph1", "CF_beta1_graph1")) {
+  # Crear una matriz cuadrada vacía
+  matriz_cuadrada <- matrix(NA, nrow = length(id_values), ncol = length(id_values), 
+                            dimnames = list(id_values, id_values))
+  
+  # Llenar la matriz con los valores correspondientes
+  for (i in 1:nrow(resultados_finales)) {
+    id1 <- resultados_finales[i, "ID1"]
+    id2 <- resultados_finales[i, "ID2"]
+    valor <- resultados_finales[i, metrica]
+    matriz_cuadrada[id1, id2] <- valor
+    matriz_cuadrada[id2, id1] <- valor
+  }
+  
+  # Guardar la matriz en un archivo CSV
+  write.csv(matriz_cuadrada, file = paste0(directorio_destino, metrica, ".csv"))
+}
+
+
+
+################################################################################
+########################### Ponderación Ejemplo 1 ##############################
+################################################################################
+
+# Leer la matriz de tiempos de divergencia
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Tiempos_divergencia/Tiempos_divergencia_Espeletia_1.csv", stringsAsFactors = FALSE, row.names = 1)
+
+# Leer los datos de duración
+datos_duracion <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/UFL_duration.csv", stringsAsFactors = FALSE)
+
+# Leer la matriz con los límites para la suma de columnas
+matriz_limites <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Padre-Hijo_Tiempo/Padre-hijo_Ejemplo.csv", stringsAsFactors = FALSE, row.names = 1)
+
+# Se define una función para encontrar el valor más cercano en una columna
+encontrar_valor_cercano <- function(valor, columna) {
+  valor_cercano <- columna[which.min(abs(columna - valor))]
+  return(valor_cercano)
+}
+
+# Inicializar un marco de datos para almacenar los resultados finales
+resultados_finales <- data.frame(ID1 = character(), ID2 = character(), Dist = numeric(), DistM = numeric(), CF_beta0_graph1 = numeric(), CF_beta1_graph1 = numeric(), stringsAsFactors = FALSE)
+
+# Iterar sobre cada par de IDs
+for (i in 1:(nrow(matriz_tiempos) - 1)) {
+  for (j in (i + 1):nrow(matriz_tiempos)) {  
+    # Obtener el par de IDs actual
+    ID1 <- rownames(matriz_tiempos)[i]
+    ID2 <- rownames(matriz_tiempos)[j]
+    
+    # Calcular el tiempo de divergencia entre los pares de IDs
+    valor_tiempo <- as.numeric(matriz_tiempos[i, j])
+    
+    # Verificar si el valor de tiempo es numérico y no está en la diagonal principal
+    if (!is.na(valor_tiempo) && valor_tiempo != 0) {
+      cat("Procesando IDs:", ID1, "-", ID2, "\n")
+      cat("Valor de tiempo de divergencia:", valor_tiempo, "\n")
+      
+      # Buscar el valor más cercano en la columna "Age"
+      valor_cercano_inicio <- encontrar_valor_cercano(valor_tiempo, datos_duracion$Age)
+      cat("Valor más cercano en la columna 'Age' para el inicio de la suma:", valor_cercano_inicio, "\n")
+      
+      # Obtener el límite de la suma desde matriz_limites
+      limite_suma <- as.numeric(matriz_limites[i, j])  
+      cat("Límite de la suma obtenido desde matriz_limites:", limite_suma, "\n")
+      
+      # Buscar el valor más cercano en la columna "Age" para el límite de la suma
+      valor_cercano_fin <- encontrar_valor_cercano(limite_suma, datos_duracion$Age)
+      cat("Valor más cercano en la columna 'Age' para el fin de la suma:", valor_cercano_fin, "\n")
+      
+      # Calcular la suma de los valores desde el inicio hasta el límite especificado en matriz_limites
+      indice_fila_inicio <- which(datos_duracion$Age == valor_cercano_inicio)[1]
+      indice_fila_fin <- which(datos_duracion$Age == valor_cercano_fin)[1]
+      suma_valores <- colSums(datos_duracion[indice_fila_inicio:indice_fila_fin, 7:28], na.rm = TRUE)  
+      cat("Suma de los valores desde el inicio hasta el límite especificado en matriz_limites:\n")
+      print(suma_valores)
+      
+      # Identificar los totales que son mayores que cero
+      totales_positivos <- suma_valores[suma_valores > 0]
+      cat("Totales positivos:", totales_positivos, "\n")
+      
+      # Obtener los índices de las columnas con valores mayores que cero
+      indices_columnas <- as.numeric(gsub("X", "", names(totales_positivos)))
+      cat("Índices de las columnas con valores mayores que cero:", indices_columnas, "\n")
+      
+      # Obtener los nombres de los archivos en la carpeta de resultados
+      archivos_indices_nombres <- paste0("^(", paste(indices_columnas, collapse = "|"), "_)")
+      
+      # Filtrar los archivos correspondientes en la carpeta de resultados
+      archivos_indices <- list.files("C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics", 
+                                     pattern = archivos_indices_nombres, 
+                                     full.names = TRUE)
+      
+      # Ordenar los archivos según los números obtenidos
+      archivos_indices <- archivos_indices[order(as.numeric(gsub(".*/(\\d+)_.*", "\\1", archivos_indices)))]
+      
+      # Inicializar vectores para almacenar sumas ponderadas
+      suma_ponderada_Dist <- numeric(0)
+      suma_ponderada_DistM <- numeric(0)
+      suma_ponderada_CF_beta0_graph1 <- numeric(0)
+      suma_ponderada_CF_beta1_graph1 <- numeric(0)
+      
+      # Iterar sobre los archivos correspondientes
+      for (k in seq_along(archivos_indices)) {
+        # Leer el archivo
+        datos_archivo <- read.csv(archivos_indices[k], stringsAsFactors = FALSE)
+        print(paste("Leyendo archivo:", archivos_indices[k]))
+        
+        # Filtrar los datos para el par de IDs actual (en ambos órdenes)
+        datos_filtrados_1 <- datos_archivo[datos_archivo$ID1 == ID1 & datos_archivo$ID2 == ID2, ]
+        datos_filtrados_2 <- datos_archivo[datos_archivo$ID1 == ID2 & datos_archivo$ID2 == ID1, ]
+        print("Datos filtrados 1:")
+        print(datos_filtrados_1)
+        print("Datos filtrados 2:")
+        print(datos_filtrados_2)
+        
+        # Verificar si hay datos filtrados
+        if (nrow(datos_filtrados_1) > 0) {
+          # Imprimir valores de totales_positivos
+          print(paste("Valor de totales_positivos[k]:", totales_positivos[k]))
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_1$Dist) 
+          suma_DistM <- sum(datos_filtrados_1$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_1$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_1$CF_beta1_graph1) 
+          print("Sumas ponderadas 1:")
+          print(paste("Suma ponderada Dist:", suma_Dist * totales_positivos[k]))
+          print(paste("Suma ponderada DistM:", suma_DistM * totales_positivos[k]))
+          print(paste("Suma ponderada CF_beta0_graph1:", suma_CF_beta0_graph1 * totales_positivos[k]))
+          print(paste("Suma ponderada CF_beta1_graph1:", suma_CF_beta1_graph1 * totales_positivos[k]))
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+        if (nrow(datos_filtrados_2) > 0) {
+          # Imprimir valores de totales_positivos
+          print(paste("Valor de totales_positivos[k]:", totales_positivos[k]))
+          
+          # Calcular las sumas ponderadas
+          suma_Dist <- sum(datos_filtrados_2$Dist) 
+          suma_DistM <- sum(datos_filtrados_2$DistM) 
+          suma_CF_beta0_graph1 <- sum(datos_filtrados_2$CF_beta0_graph1) 
+          suma_CF_beta1_graph1 <- sum(datos_filtrados_2$CF_beta1_graph1) 
+          print("Sumas ponderadas 2:")
+          print(paste("Suma ponderada Dist:", suma_Dist * totales_positivos[k]))
+          print(paste("Suma ponderada DistM:", suma_DistM * totales_positivos[k]))
+          print(paste("Suma ponderada CF_beta0_graph1:", suma_CF_beta0_graph1 * totales_positivos[k]))
+          print(paste("Suma ponderada CF_beta1_graph1:", suma_CF_beta1_graph1 * totales_positivos[k]))
+          
+          suma_ponderada_Dist <- c(suma_ponderada_Dist, suma_Dist * totales_positivos[k])
+          suma_ponderada_DistM <- c(suma_ponderada_DistM, suma_DistM * totales_positivos[k])
+          suma_ponderada_CF_beta0_graph1 <- c(suma_ponderada_CF_beta0_graph1, suma_CF_beta0_graph1 * totales_positivos[k])
+          suma_ponderada_CF_beta1_graph1 <- c(suma_ponderada_CF_beta1_graph1, suma_CF_beta1_graph1 * totales_positivos[k])
+        }
+      }
+      
+      # Imprimir sumas ponderadas finales
+      print("Sumas ponderadas finales:")
+      print(suma_ponderada_Dist)
+      print(suma_ponderada_DistM)
+      print(suma_ponderada_CF_beta0_graph1)
+      print(suma_ponderada_CF_beta1_graph1)
+      
+      # Calcular la ponderación final
+      ponderacion_final_Dist <- sum(suma_ponderada_Dist, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_DistM <- sum(suma_ponderada_DistM, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta0_graph1 <- sum(suma_ponderada_CF_beta0_graph1, na.rm = TRUE) / sum(totales_positivos)
+      ponderacion_final_CF_beta1_graph1 <- sum(suma_ponderada_CF_beta1_graph1, na.rm = TRUE) / sum(totales_positivos)
+      
+      # Imprimir resultados finales
+      print("Resultados finales:")
+      print(ponderacion_final_Dist)
+      print(ponderacion_final_DistM)
+      print(ponderacion_final_CF_beta0_graph1)
+      print(ponderacion_final_CF_beta1_graph1)
+      
+      # Almacenar los resultados finales
+      resultados_finales <- rbind(resultados_finales, data.frame(ID1 = ID1, ID2 = ID2, Dist = ponderacion_final_Dist, DistM = ponderacion_final_DistM, CF_beta0_graph1 = ponderacion_final_CF_beta0_graph1, CF_beta1_graph1 = ponderacion_final_CF_beta1_graph1))
+    }
+  }
+}
+
+# Guardar los resultados finales en un archivo CSV
+write.csv(resultados_finales, file = "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_finales.csv", row.names = FALSE)
+
+
+
+
+################################################################################
+######## Espejo de matriz cuadrada (ordenar basado en la otra matriz) ##########
+################################################################################
+
+# Cargar las dos matrices
+matriz_distm <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/DistM.csv", row.names = 1)
+matriz_evol_dist <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Distancias_evolutivas_Clado_Venezolano.csv", row.names = 1)
+
+# Obtener el orden de las filas y columnas de matriz_distm
+orden <- row.names(matriz_distm)
+
+# Reordenar la matriz de tiempos de divergencia según el orden obtenido
+matriz_tiempos_ordenada <- matriz_evol_dist[orden, orden]
+
+# Guardar la matriz de distancias evolutivas ordenada en un nuevo archivo CSV
+write.csv(matriz_tiempos_ordenada, "C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Dist_evol_Clado_Venezolano_ordenado.csv")
+
+################################################################################
+################################### Plotly #####################################
+################################################################################
+
+####### Distp Vs DistEvol
+
+library(plotly)
+
+# Cargar las dos matrices
+matriz_distm <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/Indices_matrices_Clado_Colombiano/DistM.csv", row.names = 1)
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Dis_evol_Clado_Colombiano/Dist_evol_Clado_Colombiano_ordenado_COriental.csv", row.names = 1)
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/Dist_Clado_L.csv", row.names = 1)
+
+# Calcular la correlación entre las matrices
+correlacion <- cor(as.matrix(matriz_distm), as.matrix(matriz_tiempos), use = "pairwise.complete.obs")
+
+# Ignorar la diagonal
+diag(correlacion) <- 0
+
+# Obtener los pares de valores correspondientes
+valores_distm <- matriz_distm[lower.tri(matriz_distm)]
+valores_tiempos <- matriz_tiempos[lower.tri(matriz_tiempos)]
+nombres_filas <- rownames(matriz_distm)[row(matriz_distm)[lower.tri(matriz_distm)]]
+nombres_columnas <- colnames(matriz_distm)[col(matriz_distm)[lower.tri(matriz_distm)]]
+
+# Crear un DataFrame con los pares de valores y nombres de filas y columnas
+data <- data.frame(DistM = valores_distm, Tiempos = valores_tiempos, ID1 = nombres_filas, ID2 = nombres_columnas)
+
+# Ignorar los pares con NA
+data <- na.omit(data)
+
+# Calcular la regresión lineal
+regresion <- lm(Tiempos ~ DistM, data = data)
+
+# Obtener los coeficientes de la regresión
+coeficientes <- coef(regresion)
+
+
+# Asignar colores y nombres a cada categoría
+data$Color <- ifelse(data$ID1 == "E_occidentalis_3827" | data$ID2 == "E_occidentalis_3827", "C. Central", 
+                     ifelse(data$ID1 %in% c("E_frontinoensis_3831", "E_frontinoensis_Be4267", "E_praefrontina_3832", "E_praefrontina_3835") |
+                              data$ID2 %in% c("E_frontinoensis_3831", "E_frontinoensis_Be4267", "E_praefrontina_3832", "E_praefrontina_3835"), 
+                            "C. Occidental", "C. Oriental"))
+
+
+# Definir los colores personalizados para cada grupo
+colores <- c("C. Central" = "darkgreen", "C. Oriental" = "blue", "C. Occidental" = "red")
+
+# Graficar los resultados con plotly
+plot_ly(data, x = ~DistM, y = ~Tiempos, color = ~Color, colors = colores,
+        text = ~paste("ID1: ", ID1, "<br>ID2: ", ID2), type = "scatter", mode = "markers",
+        marker = list(line = list(color = 'rgb(255, 255, 255)', width = 0.8),
+                      opacity = 0.9)) %>%
+  add_lines(x = data$DistM, y = predict(regresion), 
+            line = list(color = "orange", width = 4)) %>%
+  layout(xaxis = list(title = "CF", tickfont = list(color = 'rgba(0, 0, 0, 80)')), 
+         yaxis = list(title = "DistMp", tickfont = list(color = 'rgba(0, 0, 0, 80)')), 
+         title = list(text = "CF - DistMp", font = list(color = 'rgba(0, 0, 0, 80)')), 
+         plot_bgcolor = 'rgba(255, 255, 255, 80)',
+         legend = list(font = list(color = 'rgba(0, 0, 0, 80)')))
+
+###### DistM Vs Dist
+
+library(plotly)
+
+# Cargar las dos matrices
+matriz_distm <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/Indices_matrices_Clado_Colombiano/DistM.csv", row.names = 1)
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Dis_evol_Clado_Colombiano/Dist_evol_Clado_Colombiano_ordenado_COriental.csv", row.names = 1)
+
+# Calcular la correlación entre las matrices
+correlacion <- cor(as.matrix(matriz_distm), as.matrix(matriz_tiempos), use = "pairwise.complete.obs")
+
+# Ignorar la diagonal
+diag(correlacion) <- 0
+
+# Obtener los pares de valores correspondientes
+valores_distm <- matriz_distm[lower.tri(matriz_distm)]
+valores_tiempos <- matriz_tiempos[lower.tri(matriz_tiempos)]
+nombres_filas <- rownames(matriz_distm)[row(matriz_distm)[lower.tri(matriz_distm)]]
+nombres_columnas <- colnames(matriz_distm)[col(matriz_distm)[lower.tri(matriz_distm)]]
+
+# Crear un DataFrame con los pares de valores y nombres de filas y columnas
+data <- data.frame(DistM = valores_distm, Tiempos = valores_tiempos, ID1 = nombres_filas, ID2 = nombres_columnas)
+
+# Ignorar los pares con NA
+data <- na.omit(data)
+
+# Calcular la regresión lineal
+regresion <- lm(Tiempos ~ DistM, data = data)
+
+# Obtener los coeficientes de la regresión
+coeficientes <- coef(regresion)
+
+# Graficar los resultados con plotly
+plot_ly(data, x = ~DistM, y = ~Tiempos, type = "scatter", mode = "markers",
+        marker = list(line = list(color = 'rgb(255, 255, 255)', width = 0.8),
+                      opacity = 0.9)) %>%
+  add_lines(x = data$DistM, y = predict(regresion), 
+            line = list(color = "orange", width = 4)) %>%
+  layout(xaxis = list(title = "DistMp", tickfont = list(color = 'rgba(0, 0, 0, 80)')), 
+         yaxis = list(title = "Distp", tickfont = list(color = 'rgba(0, 0, 0, 80)')), 
+         title = list(text = "Clado L (DistMp - Distp)", font = list(color = 'rgba(0, 0, 0, 80)')), 
+         plot_bgcolor = 'rgba(255, 255, 255, 80)',
+         legend = list(font = list(color = 'rgba(0, 0, 0, 80)')))
+
+
+
+
+################################################################################
+########################## Test de Mantel simple ###############################
+################################################################################
+
+library(vegan)
+
+# Rutas de los archivos CSV
+ruta_evolutiva <- "C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Dis_evol_Clado_Colombiano/Dist_evol_Clado_Colombiano_ordenado_COriental.csv"
+ruta_DistMp <- "C:/Users/Usuario/Desktop/Archivos_tesis/Dist3200.csv"
+ruta_Distp <- "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/Dist.csv"
+ruta_CF_beta0_graph1 <- "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/Indices_matrices_Clado_Colombiano/CF_beta0_graph1 - copia - copia.csv"
+
+# Cargar las matrices de distancia
+matriz_evolutiva <- as.dist(read.csv(ruta_evolutiva, row.names = 1))
+matriz_DistMp <- as.dist(read.csv(ruta_DistMp, row.names = 1))
+matriz_Distp <- as.dist(read.csv(ruta_Distp, row.names = 1))
+matriz_CF_beta0_graph1 <- as.dist(read.csv(ruta_CF_beta0_graph1, row.names = 1))
+
+# Realizar los tests de Mantel simples
+resultado_mantel_DistMp <- mantel(matriz_evolutiva, matriz_DistMp, method = "spearman", permutations = 999)
+resultado_mantel_Distp <- mantel(matriz_evolutiva, matriz_Distp, method = "spearman", permutations = 999)
+resultado_mantel_CF_beta0_graph1 <- mantel(scaled_data_decimal[,-1], matriz_CF_beta0_graph1, method = "spearman", permutations = 999)
+
+# Mostrar los resultados
+print(resultado_mantel_DistMp)
+print(resultado_mantel_Distp)
+print(resultado_mantel_CF_beta0_graph1)
+
+
+
+################################################################################
+###################### CORRELOGAMA DE TEST DE MANTEL ###########################
+################################################################################
+library(vegan)
+
+# Calcular el correlograma de Mantel con la corrección de Bonferroni
+mantel_res <- mantel.correlog(D.eco = matriz_evolutiva, D.geo = matriz_DistMp, n.class = 0, mult = "bonferroni", r.type = "spearman", nperm = 999)
+
+# Mostrar los resultados
+print(mantel_res)
+plot(mantel_res)
+
+################################################################################
+########################### Test de Mantel parcial #############################
+################################################################################
+
+library(vegan)
+
+# Rutas de los archivos CSV
+ruta_evolutiva <- "C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Dist_evol_Espeletia_ordenado_padre_hijo.csv"
+ruta_corriente_0 <- "C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics/Parametros/Matrices_cuadradas_por_indice/CF_beta0_graph1.csv"
+ruta_corriente_1 <- "C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics/Parametros/Matrices_cuadradas_por_indice/CF_beta1_graph1.csv"
+ruta_Distp <- "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/Indices_matrices_padre_hijo/Dist.csv"
+ruta_DistMp <- "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/Indices_matrices_padre_hijo/DistM.csv"
+
+# Cargar las matrices de distancia
+matriz_evolutiva <- read.csv(ruta_evolutiva, row.names = 1)
+matriz_corriente_0 <- read.csv(ruta_corriente_0, row.names = 1)
+matriz_corriente_1 <- read.csv(ruta_corriente_1, row.names = 1)
+matriz_DistMp <- read.csv(ruta_DistMp, row.names = 1)
+matriz_Distp <- read.csv(ruta_Distp, row.names = 1)
+
+# Reemplazar valores cero por NA en las matrices de distancia
+matriz_evolutiva[matriz_evolutiva == 0] <- NA
+
+# Realizar el test de Mantel Parcial con la matriz de corriente 0
+resultado_mantel_0 <- mantel.partial(matriz_evolutiva, matriz_corriente_0, matriz_euclidiana, method = "spearman", permutations = 999)
+
+# Realizar el test de Mantel Parcial con la matriz de corriente 1
+resultado_mantel_1 <- mantel.partial(matriz_evolutiva, matriz_corriente_1, matriz_euclidiana, method = "spearman", permutations = 999)
+
+# Test mantel DistMp vs Disp
+resultado_mantel_parcial <- mantel.partial(matriz_evolutiva, matriz_DistMp, matriz_Distp, method = "spearman", permutations = 999)
+
+# Mostrar los resultados
+print(resultado_mantel_parcial)
+
+################################################################################
+###################### HEATMAP DE ANALISIS ENTRE PARES #########################
+################################################################################
+library(ecodist)
+library(gplots)
+
+windows()
+
+# Leer las matrices de distancias
+evol_dist <- as.matrix(read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Dist_evol_Espeletia_ordenado.csv", header = TRUE, row.names = 1))
+DistM <- as.matrix(read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/DistM.csv", header = TRUE, row.names = 1))
+
+# Número de individuos
+n_individuos <- nrow(evol_dist)
+
+# Crear matrices para almacenar resultados
+cor_matrix <- matrix(NA, nrow = n_individuos, ncol = n_individuos)
+p_values <- matrix(NA, nrow = n_individuos, ncol = n_individuos)
+
+# Definir la función para calcular la correlación de pares y realizar la prueba de hipótesis
+correlation_test <- function(ind1, ind2, dist_matrix1, dist_matrix2) {
+  dist1 <- as.numeric(dist_matrix1[ind1, ])
+  dist2 <- as.numeric(dist_matrix2[ind2, ])
+  
+  # Filtrar NA y Inf
+  valid_indices <- complete.cases(dist1, dist2)
+  dist1 <- dist1[valid_indices]
+  dist2 <- dist2[valid_indices]
+  
+  result <- cor.test(dist1, dist2, method = "spearman", exact = TRUE)
+  
+  return(list(correlation = result$estimate, p_value = result$p.value))
+}
+
+# Llenar la matriz de correlación y p-values
+for (i in 1:n_individuos) {
+  for (j in 1:n_individuos) {
+    if (i != j) {
+      # Calcular correlación
+      result <- correlation_test(i, j, evol_dist, DistM)
+      cor_matrix[i, j] <- result$correlation
+      p_values[i, j] <- result$p_value
+    }
+  }
+}
+
+# Mostrar la matriz de correlación
+print(cor_matrix)
+
+# Mostrar la matriz de p-values (opcional)
+print(p_values)
+
+# Asignar nombres de especies a filas y columnas
+species_names <- rownames(evol_dist)
+rownames(p_values) <- species_names
+colnames(p_values) <- species_names
+
+# Guardar la matriz con nombres en un archivo CSV
+write.csv(p_values, "matriz_p_value.csv")
+
+windows()
+
+# Crear el heatmap con dendrograma
+heatmap.2(as.matrix(p_values),  # Usar valores P como datos
+          trace = "none",       # Sin líneas de colores adicionales
+          dendrogram = "both",  # Mostrar dendrograma en filas y columnas
+          col = colorRampPalette(c("blue", "white", "lightgreen"))(100),
+          main = "Spearman correlation between pairs",  # Título principal
+          key = TRUE,           # Mostrar leyenda de colores
+          density.info = "none", # Sin información de densidad
+          symkey = FALSE,       # Sin simetría en la leyenda
+          labRow = species_names,  # Nombres de las filas
+          labCol = species_names,  # Nombres de las columnas
+          margins = c(12, 12))   # Ajustar márgenes para incluir los nombres
+
+################################################################################
+############################### Correlograma ###################################
+################################################################################
+# Cargar las bibliotecas necesarias
+library(gplots)
+
+windows()
+
+# Leer las matrices de distancias
+evol_dist <- as.matrix(read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Dist_evol_Espeletia_ordenado.csv", header = TRUE, row.names = 1))
+DistM <- as.matrix(read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics/Parametros/Matrices_cuadradas_por_indice/DistM.csv", header = TRUE, row.names = 1))
+
+# Limpiar valores problemáticos
+evol_dist[is.na(evol_dist) | is.nan(evol_dist) | is.infinite(evol_dist)] <- 0
+DistM[is.na(DistM) | is.nan(DistM) | is.infinite(DistM)] <- 0
+
+# Asignar nombres de especies a filas y columnas
+species_names <- rownames(evol_dist)
+
+# Crear el heatmap
+heatmap.2(as.matrix(cor(evol_dist, DistM)),
+          trace = "none",       # Sin líneas de colores adicionales
+          dendrogram = "both",  # Mostrar dendrograma en filas y columnas
+          col = colorRampPalette(c("blue", "white", "red"))(100), # Colores del heatmap
+          main = "Correlación entre matrices",  # Título principal
+          key = TRUE,           # Mostrar leyenda de colores
+          density.info = "none", # Sin información de densidad
+          symkey = FALSE,       # Sin simetría en la leyenda
+          labRow = species_names,  # Nombres de las filas
+          labCol = species_names,  # Nombres de las columnas
+          margins = c(12, 12))   # Ajustar márgenes para incluir los nombres
+################################################################################
+############################ Correlación valor P ###############################
+################################################################################
+
+# Función para calcular la correlación y el valor p entre dos variables
+correlation_test <- function(x, y) {
+  # Eliminar filas con valores faltantes
+  complete_cases <- complete.cases(x, y)
+  x <- x[complete_cases]
+  y <- y[complete_cases]
+  
+  # Verificar si hay suficientes observaciones después de eliminar los valores faltantes
+  if (length(x) < 3 || length(y) < 3) {
+    return(NA) # Si no hay suficientes observaciones, retornar NA
+  }
+  
+  # Calcular el valor p usando la correlación de Spearman
+  result <- cor.test(x, y, method = "spearman")
+  return(result$p.value)
+}
+
+# Calcular valores p para cada par de variables
+p_values <- matrix(NA, ncol(evol_dist), ncol(DistM)) # Inicializar matriz de valores p
+
+for (i in 1:ncol(evol_dist)) {
+  for (j in 1:ncol(DistM)) {
+    p_values[i, j] <- correlation_test(evol_dist[, i], DistM[, j])
+  }
+}
+
+# Asignar nombres de especies a filas y columnas
+species_names <- rownames(evol_dist)
+
+# Crear el heatmap
+heatmap.2(p_values,
+          trace = "none",       # Sin líneas de colores adicionales
+          dendrogram = "both",  # Mostrar dendrograma en filas y columnas
+          col = colorRampPalette(c("blue", "white", "red"))(100), # Colores del heatmap
+          main = "Valores P de correlación entre matrices",  # Título principal
+          key = TRUE,           # Mostrar leyenda de colores
+          density.info = "none", # Sin información de densidad
+          symkey = FALSE,       # Sin simetría en la leyenda
+          labRow = species_names,  # Nombres de las filas
+          labCol = species_names,  # Nombres de las columnas
+          margins = c(12, 12))   # Ajustar márgenes para incluir los nombres
+
+################################################################################
+########################### Mosaico de rasters #################################
+################################################################################
+library(raster)
+library(rasterVis)
+
+# Directorio donde se encuentran los archivos .tiff
+carpeta <- "C:/Users/Usuario/Desktop/Archivos_tesis/Rasters_reclasificados"
+
+# Obtener la lista de archivos .tiff en la carpeta
+archivos_tiff <- list.files(carpeta, pattern = "\\.tif$", full.names = TRUE)
+
+# Crear una lista para almacenar los raster
+raster_list <- lapply(archivos_tiff, raster)
+
+# Leer el primer raster para obtener las dimensiones
+primer_raster <- raster(archivos_tiff[1])
+
+# Crear una matriz para almacenar el mosaico
+mosaic_matrix <- raster::stack(raster_list)
+
+windows()
+
+# Graficar el mosaico de raster con nombres de raster más cortos
+levelplot(mosaic_matrix)
+
+
+library(lattice)
+library(paletteer)
+library(viridis) # Esto solo si necesitas la paleta viridis en algún otro lugar de tu script
+
+# Definir la paleta de colores utilizando paletteer
+my_palette <- paletteer_c("grDevices::RdGy", 300)
+
+# Usar la paleta de colores en el argumento col.regions
+levelplot(mosaic_matrix, col.regions = my_palette)
+
+################################################################################
+###################### Grafico de Dispersión de puntos #########################
+################################################################################
+
+# Cargar las bibliotecas necesarias y las matrices desde los archivos CSV
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
+
+windows()
+
+# Especificar las rutas de los archivos CSV
+ruta_evolutiva <- "C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Distancias_evolutivas_Clado_E.csv"
+ruta_distM <- "C:/Users/Usuario/Desktop/Archivos_tesis/Graphab_resultados/Resultados_lmetrics/Parametros/Matrices_cuadradas_por_indice/Indices_Clado_E/DistM.csv"
+
+# Leer los datos de la matriz evolutiva y de conectividad
+matriz_evolutiva <- as.matrix(read.csv(ruta_evolutiva, header = TRUE, row.names = 1))
+matriz_conectividad <- as.matrix(read.csv(ruta_distM, header = TRUE, row.names = 1))
+
+# Paso 2: Preparar los datos para el gráfico
+filas <- rownames(matriz_evolutiva)
+columnas <- colnames(matriz_evolutiva)
+
+# Crear un dataframe vacío para almacenar los datos
+datos <- data.frame(Especie1 = character(), Especie2 = character(), Distancia_Evolutiva = numeric(), Distancia_Conectividad = numeric(), stringsAsFactors = FALSE)
+
+# Iterar sobre la mitad superior de las matrices y agregar los datos al dataframe
+for (i in 1:(length(filas) - 1)) {
+  for (j in (i + 1):length(columnas)) {
+    f <- filas[i]
+    c <- columnas[j]
+    datos <- rbind(datos, data.frame(Especie1 = f, Especie2 = c, Distancia_Evolutiva = matriz_evolutiva[f, c], Distancia_Conectividad = matriz_conectividad[f, c], stringsAsFactors = FALSE))
+  }
+}
+
+datos
+
+# Define los valores de ruptura para el eje x y el eje y basados en los valores de las matrices
+#breaks_x <- c(0, 0.002, 0.004, 0.006, 0.008, 0.01, 0.02)
+#breaks_y <- c(0, 10000, 30000, 50000, 70000, 90000, 120000)
+
+breaks_x <- c(0, 0.005, 0.02)
+breaks_y <- c(0, 50000, 100000)
+
+# Calcular el coeficiente de correlación de Pearson
+correlation <- cor(datos$Distancia_Evolutiva, datos$Distancia_Conectividad)
+
+p <- ggplot(datos, aes(x = Distancia_Evolutiva, y = Distancia_Conectividad, label = paste(Especie1, Especie2, sep = " y "))) +
+  geom_point(size = 2, alpha = 0.6) +  # Puntos de dispersión
+  geom_text_repel(size = 3, segment.size = 0.2, box.padding = 0.5, point.padding = 0.5, max.overlaps = 20) +  # Etiquetas repelidas
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +  # Línea de regresión lineal
+  scale_x_continuous(breaks = breaks_x, labels = format(breaks_x, scientific = FALSE)) + # Formateo de las etiquetas del eje x
+  scale_y_continuous(breaks = breaks_y, labels = format(breaks_y, scientific = FALSE)) + # Formateo de las etiquetas del eje y
+  labs(x = "DistEvol", y = "DistM",
+       title = "Distancias Evolutivas vs. Conectividad") +
+  theme_minimal() +
+  theme(axis.text=element_text(size=12), axis.title=element_text(size=14),
+        plot.title = element_text(size = 16, face = "bold"))
+
+# Agregar el valor de R al gráfico
+p + annotate("text", x = Inf, y = Inf, hjust = 1, vjust = 1, 
+             label = paste("Coeficiente de Pearson (R) =", round(correlation, 2)))
+################################################################################
+###################### Generalized Dissimilarity Modeling ######################
+################################################################################
+
+library(gdm)
+library(vegan)
+
+#### NMDS (Pseudocoordeandas)
+
+matriz_distmp <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/CF_beta0_graph1_Clado_L.csv", row.names = 1)
+
+
+# Realizar análisis NMDS
+nmds_resultado <- metaMDS(matriz_distmp)
+plot(nmds_resultado)
+
+# Escribir el vector pseudocoordenadas en un dataframe
+pseudocoordenadas_df <- as.data.frame(pseudocoordenadas)
+
+# ruta donde deseas guardar el archivo CSV
+ruta_archivo <- "C:/Users/Usuario/Desktop/Archivos_tesis/GDM/pseudocoordenadas1/pseudocoordenadas_CF_beta0_graph1_Clado_L.csv"
+
+# Escribir el dataframe en un archivo CSV
+write.csv(pseudocoordenadas_df, file = ruta_archivo, row.names = TRUE)
+
+#### Formateado
+
+library(gdm)
+
+# Cargar los datos de pseudocoordenadas
+pseudocoordenadas <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/GDM/GDM_C_R_T.csv")
+
+# Cargar los datos de distancias evolutivas
+matriz_tiempos <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Distancias_evolutivas_CF_Clado_C_R_T - gdm.csv", row.names = 1)
+
+# Escalar los datos a valores entre 0 y 1
+scaled_data <- matriz_tiempos - min(matriz_tiempos)
+scaled_data <- scaled_data / max(scaled_data)
+
+# Convertir los valores en notación científica a decimales
+options(scipen = 999)  # Evitar la notación científica
+scaled_data_decimal <- as.data.frame(scaled_datda)
+
+# Agregar columna de sitio a la matriz de distancias evolutivas
+site <- unique(pseudocoordenadas$site)
+#gdmDissim <- cbind(site, scaled_data_decimal)
+scaled_data_decimal <- cbind(site, scaled_data_decimal)
+matriz_tiempos <- cbind(site, matriz_tiempos)
+
+
+gdmTab.dis <- formatsitepair(bioData = scaled_data_decimal,
+                             bioFormat = 3, # Formato de matriz de distancias
+                             XColumn = "Long", # Nombre de la columna de coordenadas X
+                             YColumn = "Lat", # Nombre de la columna de coordenadas Y
+                             predData = pseudocoordenadas, # Datos de predicción (coordenadas)
+                             siteColumn = "site") # Columna de identificadores de sitio
+
+#GDM model fitting
+gdm.1 <- gdm(data=gdmTab.dis,
+             geo=TRUE)
+
+
+summary(gdm.1)
+
+gdm.varImp(gdmTab.dis, geo=TRUE, splines = NULL, knots = NULL,
+           predSelect = FALSE, nPerm = 1000, pValue=0.05, parallel = FALSE, cores = 3,
+           sampleSites = 1, sampleSitePairs = 1, outFile = NULL)
+
+plot(gdm.1, plot.layout = c(3, 2))
+plot(gdm.1)
+
+#Vectores GDMs
+
+Clado_C_R_T <- gdm(data=gdmTab.dis,
+                        geo=TRUE)
+
+Clado_Ca <- gdm(data=gdmTab.dis,
+                     geo=TRUE)
+
+Clado_L <- gdm(data=gdmTab.dis,
+                    geo=TRUE)
+
+Clado_oriental <- gdm(data=gdmTab.dis,
+                           geo=TRUE)
+
+Clado_ori_occi_cent <- gdm(data=gdmTab.dis,
+                      geo=TRUE)
+
+isplineExtract(gdm.1)
+
+
+
+
+
+
+
+# Grafico Parra
+
+xc <- matriz_DistMp
+xe <- matriz_Distp
+y <- matriz_tiempos[,-1]
+ys <- scaled_data_decimal[,-1]
+plot(y=y[lower.tri(y)], x=xe[lower.tri(xe)])
+plot(y=y[lower.tri(y)], x=xc[lower.tri(xc)])
+plot(y=ys[lower.tri(ys)], x=xc[lower.tri(xc)])
+
+################################################################################
+############################### Plots GDMs #####################################
+################################################################################
+
+library(plotly)
+
+# Aplicar isplineExtract a Dist
+ispline_data_gdm <- isplineExtract(gdm.1)
+
+# Extraer valores de x y y para la primera línea (Dist)
+x_gdm <- ispline_data_gdm$x[, "Geographic"]
+y_gdm <- ispline_data_gdm$y[, "Geographic"]
+
+# Texto para la línea
+texto_Distp <- "DE: 3.865%"
+
+# Crear un gráfico
+plot_ly() %>%
+  add_trace(x = ~x_gdm, y = ~y_gdm, type = 'scatter', mode = 'lines+markers', name = 'Distp', marker = list(color = "rgba(255, 99, 71, 0.7)", width = 8)) %>%
+  add_annotations(text = texto_Distp, x = tail(x_gdm, n = 1), y = tail(y_gdm, n = 1) + 0.007, xref = "x", yref = "y", showarrow = FALSE, xshift = 20) %>%
+  layout(title = "GDM Clado C. Oriental",
+         xaxis = list(title = "CF"),
+         yaxis = list(title = "f(Evolutionary Distance)"),
+         legend = list(x = 1.05, y = 0.5, orientation = "v"))  # Posición vertical de la leyenda
+
+summary(CF_Clado_C_R_T)
+
+#### Plot GDM doble linea con DE
+
+library(plotly)
+
+# Aplicar isplineExtract a Dist
+ispline_data_gdm <- isplineExtract(a)
+
+# Extraer valores de x y y para la primera línea (Dist)
+x_gdm <- ispline_data_gdm$x[, "Geographic"]
+y_gdm <- ispline_data_gdm$y[, "Geographic"]
+
+# Aplicar isplineExtract a DistM
+ispline_data_clado <- isplineExtract(b)
+
+# Extraer valores de x y y para la segunda línea (DistM)
+x_clado <- ispline_data_clado$x[, "Geographic"]
+y_clado <- ispline_data_clado$y[, "Geographic"]
+
+# Texto para cada línea
+texto_Distp <- "DE: 2.894%"
+texto_DistMp <- "DE: 4.718%"
+
+# Crear un gráfico
+plot_ly() %>%
+  add_trace(x = ~x_gdm, y = ~y_gdm, type = 'scatter', mode = 'lines+markers', name = 'Distp', line = list(width = 5.7)) %>%
+  add_trace(x = ~x_clado, y = ~y_clado, type = 'scatter', mode = 'lines+markers', name = 'DistMp', line = list(width = 5.7)) %>%
+  add_annotations(text = texto_Distp, x = tail(x_gdm, n = 1), y = tail(y_gdm, n = 1) + 0.0009, xref = "x", yref = "y", showarrow = FALSE, xshift = 20) %>%
+  add_annotations(text = texto_DistMp, x = tail(x_clado, n = 1), y = tail(y_clado, n = 1) + 0.006, xref = "x", yref = "y", showarrow = FALSE, xshift = 20) %>%
+  layout(title = "GDM 3200",
+         xaxis = list(title = "Geographic Distance"),
+         yaxis = list(title = "f(Evolutionary Distance)"),
+         legend = list(x = 1.05, y = 0.5, orientation = "v"))  # Posición horizontal de la leyenda
+
+
+
+################################################################################
+################ Normalización y escalado logaritmico de matrices###############
+################################################################################
+
+# Cargar los datos de las matrices desde los archivos CSV
+matriz_distancias1 <- "C:/Users/Usuario/Desktop/Archivos_tesis/Distancias_evolutivas/Dis_evol_Espeletia/Dist_evol_Espeletia_ordenado_TD_2.5ma.csv"
+matriz_distM1 <- "C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_matrices_indices/Indices_matrices_2.5ma/DistM.csv"
+
+matriz_distancias <- as.matrix(read.csv(matriz_distancias1, header = TRUE, row.names = 1))
+matriz_distM <- as.matrix(read.csv(matriz_distM1, header = TRUE, row.names = 1))
+
+# Función para aplicar z-score a una matriz
+z_score <- function(matriz) {
+  # Calcular la media y la desviación estándar de la matriz
+  media <- apply(matriz, 2, mean, na.rm = TRUE)
+  desviacion_estandar <- apply(matriz, 2, sd, na.rm = TRUE)
+  
+  # Aplicar z-score a la matriz
+  matriz_z_score <- scale(matriz, center = media, scale = desviacion_estandar)
+  
+  return(matriz_z_score)
+}
+
+# Aplicar z-score a ambas matrices
+matriz_distancias_z_score <- z_score(matriz_distancias)
+matriz_distM_z_score <- z_score(matriz_distM)
+
+# Graficar histograma de la matriz de distancias estandarizadas con z-score
+hist(matriz_distM_z_score, main = "Histograma de Matriz de Distancias Estandarizadas (Z-score)", xlab = "Valores Estandarizados", col = "blue")
+
+
+################################################################################
+################  Graficos para el ejemplo de diapositivas #####################
+################################################################################
+
+################################################################################
+################################ Phylo to Map ##################################
+################################################################################
+
+library(ape)
+library(mapdata)
+library(viridis)
+library(phytools)
+
+# Leer la filogenia desde el archivo NEXUS
+phylo <- read.tree("C:/Users/Usuario/Desktop/iqtree-2.2.2.6-Windows/iqtree-2.2.2.6-Windows/bin/FIG4_Alignment_ETS_ITS_rpl16.nex.timetree.nwk")
+
+# Leer las coordenadas desde el archivo CSV
+coordinates <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/Clados_defin/Clado_C_R_T.csv")
+
+# Filtrar la filogenia para incluir solo las especies presentes en el archivo CSV
+species <- coordinates$Site.ID
+phylo_filtered <- drop.tip(phylo, setdiff(phylo$tip.label, species))
+plot(phylo_filtered)
+# Convertir las coordenadas en una matriz con nombres de fila y sin nombres de columna
+coordenadas_matrix <- as.matrix(coordinates[, c("Longitude", "Latitude")])
+rownames(coordenadas_matrix) <- coordinates$Site.ID
+colnames(coordenadas_matrix) <- NULL
+
+# Intercambiar las columnas en la matriz de coordenadas (Latitud y Longitud)
+ordered_coordinates <- coordenadas_matrix[, c(2, 1)]
+
+# Graficar
+obj <- phylo.to.map(phylo_filtered, ordered_coordinates, database = "worldHires", regions = "Venezuela", plot = FALSE, direction = "rightwards")
+plot(obj,direction="rightwards",fsize=0.5,cex.points=c(0,1), lwd=c(3,1),ftype="i", lty="solid")
+
+
+# Otra opción de grafico
+plot(obj,direction="rightwards",
+     fsize=0.5,cex.points=c(0,1), lwd=c(3,1),ftype="i",asp=0.8,lty="solid",
+     map.bg="darkgreen",map.fill="transparent",
+     lwd=1,pts=FALSE,colors="red",
+     cex.points=1.4,delimit_map=FALSE)
+
+
+
+################################################################################
+################################################################################
+
+
+##fit table environmental data
+# format site-pair table using the southwest data table
+head(southwest)
+sppData <- southwest[c(1,2,13,14)]
+envTab <- southwest[c(2:ncol(southwest))]
+
+sitePairTab <- formatsitepair(sppData, 2, XColumn="Long", YColumn="Lat", sppColumn="species",
+                              siteColumn="site", predData=envTab)
+
+##fit table GDM
+gdmTabMod <- gdm(sitePairTab, geo=TRUE)
+summary(gdmTabMod)
+
+
+
+##fit raster environmental data
+##sets up site-pair table
+rastFile <- system.file("./extdata/swBioclims.grd", package="gdm")
+envRast <- raster::stack(rastFile)
+
+##environmental raster data
+sitePairRast <- formatsitepair(sppData, 2, XColumn="Long",
+                               YColumn="Lat", sppColumn="species",
+                               siteColumn="site", predData=envRast)
+##sometimes raster data returns NA in the site-pair table, these rows will
+##have to be removed before fitting gdm
+sitePairRast <- na.omit(sitePairRast)
+
+##fit raster GDM
+gdmRastMod <- gdm(sitePairRast, geo=TRUE)
+summary(gdmRastMod)
+
+
+
+
+
+
+library(sp)
+
+
+# Leer el archivo CSV
+pseudocoordenadas <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/GDM/GDM_L.csv")
+
+# Crear un objeto SpatialPointsDataFrame con las coordenadas originales
+coordinates <- data.frame(x = pseudocoordenadas$Long, y = pseudocoordenadas$Lat)
+coordinates <- SpatialPointsDataFrame(coords = coordinates, data = coordinates, proj4string = CRS("+proj=longlat +datum=WGS84"))  
+
+# Transformar las coordenadas al sistema MAGNA Sirgas
+coordinates_magna <- spTransform(coordinates, CRS("+proj=utm +zone=18 +south +ellps=GRS80"))  # Definir el sistema MAGNA Sirgas
+
+# Guardar las coordenadas transformadas en un nuevo archivo CSV
+write.csv(coordinates_magna, file.path(dirname("C:/Users/Usuario/Desktop/Archivos_tesis/GDM/GDM_L.csv"), "pseudocoordenadas_magna.csv"), row.names = FALSE)
+
+
+
+
+
+# Leer las coordenadas desde el archivo CSV
+coords <- read.csv("C:/Users/Usuario/Desktop/Archivos_tesis/GDM/GDM_L.csv")
+
+# Calcular las distancias euclidianas
+distancias <- dist(coords)
+
+# Convertir la matriz de distancias a una matriz cuadrada
+distancias_matriz <- as.matrix(distancias)
+
+# Guardar la matriz de distancias en un archivo CSV en la misma ubicación
+write.csv(distancias_matriz, file = "C:/Users/Usuario/Desktop/Archivos_tesis/GDM/Distancias_Euclidianas.csv")
+
+
+
+#### Grafico de diversificación
+
+library(stringr)
+library(ggplot2)
+
+# Cargar el texto desde el archivo
+input_string <- readLines("C:/Users/Usuario/Desktop/Archivos_tesis/tree_data.txt")
+
+# Convertir el vector de caracteres en una sola cadena
+input_string <- paste(input_string, collapse = "")
+
+# Extraer los números después de ":"
+extracted_numbers <- str_extract_all(input_string, "(?<=:)[0-9.]+")[[1]]
+
+# Convertir los números extraídos en un vector numérico
+extracted_numbers <- as.numeric(extracted_numbers)
+
+# Crear un gráfico de densidad usando ggplot
+ggplot(data = data.frame(values = extracted_numbers), aes(x = values)) +
+  geom_density(fill = "skyblue", color = "black", alpha = 0.7) +  # Usar densidad en lugar de histograma
+  labs(x = "Million of Years",  # Cambiar la etiqueta del eje x
+       y = "Density of Lineages") +  # Cambiar la etiqueta del eje y
+  theme_minimal()  # Usar un tema minimalista
+
+
+# Crear un gráfico de densidad usando ggplot
+ggplot(data = data.frame(values = extracted_numbers), aes(x = values)) +
+  geom_density(fill = "skyblue", color = "black", alpha = 0.7) +  # Usar densidad en lugar de histograma
+  labs(x = "Million of Years",  # Cambiar la etiqueta del eje x
+       y = "Density of Lineages") +  # Cambiar la etiqueta del eje y
+  theme_minimal() +  # Usar un tema minimalista
+  theme(
+    panel.grid = element_blank(),  # Eliminar la rejilla
+    text = element_text(family = "Times New Roman", size = 13),  # Cambiar la fuente y el tamaño
+    axis.title = element_text(family = "Times New Roman", size = 13),
+    axis.text = element_text(family = "Times New Roman", size = 13),
+    plot.title = element_text(family = "Times New Roman", size = 13),
+    plot.subtitle = element_text(family = "Times New Roman", size = 13),
+    plot.caption = element_text(family = "Times New Roman", size = 13)
+  )
+
+
+
+
+
+
+
+### Ejemplo de filogenia
+
+
+library(ape)
+
+# Define las etiquetas para los terminales (pueden ser letras)
+labels <- c("A", "B", "C", "D", "E")
+
+# Crea un árbol ultramétrico con 5 terminales
+ultrametric_tree <- rtree(n = 5, tip.label = labels)
+
+# Ajusta las longitudes de las ramas para que sean todas iguales
+ultrametric_tree$edge.length <- rep(1, length(ultrametric_tree$edge.length))
+
+# Escala las ramas para que alcancen un millón de años
+ultrametric_tree_scaled <- compute.brlen(ultrametric_tree, target = 1000000)
+
+# Etiqueta los nodos con números
+ultrametric_tree_scaled$node.label <- 1:length(ultrametric_tree_scaled$node.label)
+
+# Dibuja el árbol con las etiquetas de los nodos
+plot(ultrametric_tree_scaled, show.tip.label = TRUE, cex = 1.5)
+axisPhylo(side = 1, cex.axis = 1.2)
+
+# Añade un título al eje x (el eje de tiempo)
+mtext("Ma", side = 1, line = 3)
+nodelabels()
+tiplabels(adj = -3) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
