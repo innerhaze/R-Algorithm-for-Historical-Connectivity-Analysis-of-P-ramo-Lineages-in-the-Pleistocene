@@ -12,7 +12,7 @@
 <meta name="author" content="Sebastián Sánchez Cuartas" />
 
 
-<title>Historical Connectivity Analysis for Lineages using Pleistocene Páramo Configurations</title>
+<title>Algoritmo de R para el Análisis de Conectividad Histórica de Linajes de Páramo en el Pleistoceno</title>
 
 <script src="site_libs/header-attrs-2.27/header-attrs.js"></script>
 <script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
@@ -348,10 +348,10 @@ $(document).ready(function () {
 
 
 
-<h1 class="title toc-ignore">Historical Connectivity Analysis for
-Lineages using Pleistocene Páramo Configurations</h1>
+<h1 class="title toc-ignore">Algoritmo de R para el Análisis de
+Conectividad Histórica de Linajes de Páramo en el Pleistoceno</h1>
 <h4 class="author">Sebastián Sánchez Cuartas</h4>
-<h4 class="date">agosto 15, 2024</h4>
+<h4 class="date">agosto 20, 2024</h4>
 
 </div>
 
@@ -487,6 +487,11 @@ diferentes momentos y no en un orden fijo.
 <p>…</p>
 <div id="algoritmo-empleado" class="section level2">
 <h2><strong>Algoritmo empleado</strong></h2>
+<div id="section" class="section level5">
+<h5></h5>
+<p><em>Al final, se presenta el resultado para un par de organismos o
+parches, incluyendo los mensajes impresos de cada paso del proceso de
+ejecución.</em></p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Leer los datos de duración y las configuraciones de páramo del estudio de Flantua et al. (2019)</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>datos_duracion <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="st">&quot;C:/Users/Usuario/Desktop/Archivos_tesis/Matrices_UFL/UFL_duration.csv&quot;</span>, <span class="at">stringsAsFactors =</span> <span class="cn">FALSE</span>)</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -672,6 +677,7 @@ diferentes momentos y no en un orden fijo.
 ## [1] 1702008</code></pre>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Guardar los resultados finales en un archivo CSV</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">write.csv</span>(resultados_finales, <span class="at">file =</span> <span class="st">&quot;C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_finales/Resultados_finales.csv&quot;</span>, <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
+</div>
 </div>
 </div>
 
