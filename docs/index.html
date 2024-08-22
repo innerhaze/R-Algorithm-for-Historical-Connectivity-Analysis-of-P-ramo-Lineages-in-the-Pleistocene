@@ -17,7 +17,7 @@
 <script src="site_libs/header-attrs-2.27/header-attrs.js"></script>
 <script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<link href="site_libs/bootstrap-3.3.5/css/united.min.css" rel="stylesheet" />
+<link href="site_libs/bootstrap-3.3.5/css/flatly.min.css" rel="stylesheet" />
 <script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
 <script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
 <script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
@@ -30,6 +30,9 @@
        h6 {font-size: 12px;}
        code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
        pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.13.2/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
 <script src="site_libs/navigation-1.1/tabsets.js"></script>
 
 <style type="text/css">
@@ -148,7 +151,6 @@ code span.wa { color: #8f5902; font-weight: bold; font-style: italic; } /* Warni
 
 
 
-<link rel="stylesheet" href="styles.css" type="text/css" />
 
 
 
@@ -310,6 +312,75 @@ $(document).ready(function () {
 
 
 
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+.tocify-subheader {
+  display: inline;
+}
+.tocify-subheader .tocify-item {
+  font-size: 0.95em;
+}
+
+</style>
+
+
 
 </head>
 
@@ -317,6 +388,16 @@ $(document).ready(function () {
 
 
 <div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
 
 
 
@@ -351,24 +432,13 @@ $(document).ready(function () {
 <h1 class="title toc-ignore">Algoritmo de R para el Análisis de
 Conectividad Histórica de Linajes de Páramo en el Pleistoceno</h1>
 <h4 class="author">Sebastián Sánchez Cuartas</h4>
-<h4 class="date">agosto 20, 2024</h4>
+<h4 class="date">agosto 21, 2024</h4>
 
 </div>
 
-<div id="TOC">
-<ul>
-<li><a href="#cálculo-de-conectividad-histórica"
-id="toc-cálculo-de-conectividad-histórica"><strong>Cálculo de
-conectividad histórica</strong></a>
-<ul>
-<li><a href="#algoritmo-empleado"
-id="toc-algoritmo-empleado"><strong>Algoritmo empleado</strong></a></li>
-</ul></li>
-</ul>
-</div>
 
-<div id="cálculo-de-conectividad-histórica" class="section level1">
-<h1><strong>Cálculo de conectividad histórica</strong></h1>
+<div id="introducción" class="section level1">
+<h1><strong>Introducción</strong></h1>
 <p>El siguiente algoritmo fue diseñado para calcular la conectividad
 histórica entre pares de linajes, con el objetivo de analizar la
 relación entre esta conectividad y las distancias evolutivas entre
@@ -485,8 +555,9 @@ diferentes momentos y no en un orden fijo.
 </p>
 </div>
 <p>…</p>
-<div id="algoritmo-empleado" class="section level2">
-<h2><strong>Algoritmo empleado</strong></h2>
+</div>
+<div id="algoritmo-empleado" class="section level1">
+<h1><strong>Algoritmo empleado</strong></h1>
 <div id="section" class="section level5">
 <h5></h5>
 <p><em>Al final, se presenta el resultado para un par de organismos o
@@ -654,35 +725,36 @@ ejecución.</em></p>
 ## Totales positivos: 2.024 10.819 41.328 18.336 11.522 9.052 14.049 11.399 34.416 33.324 51.091 42.03 9.486 1.859 
 ## Numeros correspondientes de los encabezados de las columnas con valores mayores que cero: 4 5 6 7 8 9 10 11 12 13 14 15 16 17 
 ## [1] &quot;Sumas ponderadas finales:&quot;
-##        X4        X5        X6        X7        X8        X9       X10       X11 
-##   286.433  1502.952  6034.036  3155.542  2429.756  2402.649  4791.651  4849.766 
-##       X12       X13       X14       X15       X16       X17 
-## 18258.006 21750.104 40446.390 40497.168 11057.740  2626.034 
-##        X4        X5        X6        X7        X8        X9       X10       X11 
-##  235128.3 1187754.9 4734078.4 2080552.2 1322308.2 1071295.8 1680972.5 1375092.8 
-##       X12       X13       X14       X15       X16       X17 
-## 4196493.3 4120853.6 6329514.4 5297823.4 1185445.0  231321.8 
-##      X4      X5      X6      X7      X8      X9     X10     X11     X12     X13 
-##   4.048  21.638  82.656  36.672  23.044  18.104  28.098  22.798  68.832  66.648 
-##     X14     X15     X16     X17 
-## 102.182  84.060  18.972   3.718 
-##       X4       X5       X6       X7       X8       X9      X10      X11 
-##  3444864 18414025 70340587 31208019 19610536 15406576 23911510 19401189 
-##      X12      X13      X14      X15      X16      X17 
-## 58576307 56717715 86957291 71535396 16145248  3164033 
+##  X4  X4  X5  X5  X6  X6  X7  X7  X8  X8  X9  X9 X10 X10 X11 X11 X12 X12 X13 X13 
+##  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA 
+## X14 X14 X15 X15 X16 X16 X17 X17 
+##  NA  NA  NA  NA  NA  NA  NA  NA 
+##  X4  X4  X5  X5  X6  X6  X7  X7  X8  X8  X9  X9 X10 X10 X11 X11 X12 X12 X13 X13 
+##  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA 
+## X14 X14 X15 X15 X16 X16 X17 X17 
+##  NA  NA  NA  NA  NA  NA  NA  NA 
+##  X4  X4  X5  X5  X6  X6  X7  X7  X8  X8  X9  X9 X10 X10 X11 X11 X12 X12 X13 X13 
+##  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA 
+## X14 X14 X15 X15 X16 X16 X17 X17 
+##  NA  NA  NA  NA  NA  NA  NA  NA 
+##  X4  X4  X5  X5  X6  X6  X7  X7  X8  X8  X9  X9 X10 X10 X11 X11 X12 X12 X13 X13 
+##  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA 
+## X14 X14 X15 X15 X16 X16 X17 X17 
+##  NA  NA  NA  NA  NA  NA  NA  NA 
 ## [1] &quot;Resultados finales:&quot;
-## [1] 550.6328
-## [1] 120551.8
-## [1] 2
-## [1] 1702008</code></pre>
+## [1] 0
+## [1] 0
+## [1] 0
+## [1] 0</code></pre>
 <div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Guardar los resultados finales en un archivo CSV</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">write.csv</span>(resultados_finales, <span class="at">file =</span> <span class="st">&quot;C:/Users/Usuario/Desktop/Archivos_tesis/Resultados_finales/Resultados_finales.csv&quot;</span>, <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code></pre></div>
 </div>
 </div>
+
+
+
 </div>
-
-
-
+</div>
 
 </div>
 
@@ -715,6 +787,35 @@ $(document).ready(function () {
 
 <!-- code folding -->
 
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = false;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
 
 <!-- dynamically load mathjax for compatibility with self-contained -->
 <script>
